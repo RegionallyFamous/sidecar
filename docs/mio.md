@@ -71,7 +71,7 @@ Open a window on top of it and it hops clear rather than being buried.
 
 ## Mio Companion widget
 
-Mio Companion is the built-in `openstation/mio` widget. It presents one pixel-art habitat, a greeting target, and three care actions without exposing meters, scores, streaks, or failure states. Its status is a polite live region, all actions are native buttons, and visible plus accessible copy runs through the `desktop-mode` text domain before being inserted as text. It supports a 240 × 360 minimum, 270 × 390 default, and 340 × 460 maximum floating size.
+Mio Companion is the built-in `openstation/mio` widget. It presents one code-native, egg-shaped pixel virtual-pet shell with a recessed Imagegen habitat, a thinner outlined Mio based on the official rounded blob silhouette, a greeting target, and three raised care controls. It exposes no meters, scores, streaks, or failure states. One fixed LCD message lane is a polite live region, all actions are native buttons, and visible plus accessible copy runs through the `desktop-mode` text domain before being inserted as text. The host card surface is transparent so the device reads as one object while the standard draggable chrome remains available. It supports a 240 × 360 minimum, 270 × 390 default, and 340 × 460 maximum floating size.
 
 The widget is enabled automatically on its first successful shell boot. That happens once: `mio-companion.auto-pinned.v1` records the successful pin, so removing Mio later remains the user's choice. There is no retry poll. The bundle waits for `wp.os.whenReady()`, makes one deferred `widgetLayer.ensureMounted( 'openstation/mio' )` call, and records the marker only after the layer accepts it.
 
