@@ -62,7 +62,10 @@ done
 # probes for `assets/js/desktop.js` and serves `.min` when the dev
 # bundles are absent, so even a SCRIPT_DEBUG site degrades gracefully
 # instead of 404ing.
-mapfile -t bases < <(sed -n "s/^[[:space:]]*fileBase:[[:space:]]*'\([^']*\)',\{0,1\}[[:space:]]*$/\1/p" vite.config.js)
+bases=()
+while IFS= read -r base; do
+	bases+=("$base")
+done < <(sed -n "s/^[[:space:]]*fileBase:[[:space:]]*'\([^']*\)',\{0,1\}[[:space:]]*$/\1/p" vite.config.js)
 
 if (( ${#bases[@]} == 0 )); then
 	echo "error: no 'fileBase' entries found in vite.config.js." >&2
@@ -86,15 +89,15 @@ done
 # ship via `git archive` and are not listed here. Dev bundles
 # (`<base>.js`) are legitimate on-disk build output — expected but
 # not shipped.
-declare -A expected=()
-for file in "${built[@]}"; do
-	expected["$file"]=1
-done
-for base in "${bases[@]}"; do
-	expected["assets/js/$base.js"]=1
-done
 while IFS= read -r file; do
-	if [[ -z "${expected[$file]:-}" ]]; then
+	expected=false
+	for base in "${bases[@]}"; do
+		if [[ "$file" == "assets/js/$base.js" || "$file" == "assets/js/$base.min.js" ]]; then
+			expected=true
+			break
+		fi
+	done
+	if [[ "$expected" != true ]]; then
 		echo "error: '$file' is not produced by any vite.config.js target." >&2
 		echo "       Stale build output? Remove it ('git clean -fX assets/js/') and re-run." >&2
 		exit 1
