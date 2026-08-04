@@ -582,6 +582,14 @@ const TARGETS = {
 		fileBase: 'widget-focus-timer',
 		iifeName: 'openStationFocusTimerWidget',
 	},
+	// Mio Companion widget — a calm, persistent pocket companion. Ships
+	// JS + a co-located styles.css chunk (`widget-mio[.min].css`) that
+	// includes/widgets/widget-mio.php registers.
+	'widget-mio': {
+		entry:    'src/plugins/mio-widget/index.ts',
+		fileBase: 'widget-mio',
+		iifeName: 'openStationMioWidget',
+	},
 
 	// "Agent chat" window — conversation surface for the agents
 	// framework (extended option `agents`). Registers a render

@@ -2,17 +2,18 @@
 
 **Status: Experimental.**
 
-Mio is OpenStation's desk companion: a soft-body blob wrapped in a continuous, holographic neon ring, with two pill eyes that follow your cursor. It drifts over the wallpaper — breathing gently, never quite the same shape twice — is drawn to nearby windows like a magnet, and can be picked up and thrown anywhere on the desk.
+OpenStation ships two Mio experiences. **Mio Companion** is a calm, persistent widget with a small set of care interactions. **Floating Mio** is a soft-body blob wrapped in a continuous, holographic neon ring, with two pill eyes that follow your cursor. It drifts over the wallpaper — breathing gently, never quite the same shape twice — is drawn to nearby windows like a magnet, and can be picked up and thrown anywhere on the desk.
 
-It is a **first-class shell layer**, not a widget. Widgets are cards pinned to a rail with a fixed placement contract; Mio owns its own layer inside `#os-shell`, paints above every window, and goes where it likes. That distinction is the whole point — a companion that had to live in the widget column wouldn't be a companion.
+The floating Mio documented through most of this page is a **first-class shell layer**, not a widget. It owns its own layer inside `#os-shell`, paints above every window, and goes where it likes. The companion widget is intentionally different: it stays where the user puts it and offers a quiet point of return.
 
-Off by default. Users switch it on from its **dock tile**, and can hide the tile itself from OS Settings → Apps & Icons.
+Floating Mio is off by default. Users switch it on from its **dock tile**, and can hide the tile itself from OS Settings → Apps & Icons.
 
 ---
 
 ## Contents
 
 - [For users](#for-users)
+- [Mio Companion widget](#mio-companion-widget)
 - [Architecture](#architecture)
   - [What it costs a shell that has it switched off](#what-it-costs-a-shell-that-has-it-switched-off)
 - [The simulation](#the-simulation)
@@ -65,6 +66,20 @@ Off by default. Users switch it on from its **dock tile**, and can hide the tile
 Near a window, Mio is attracted to it: it slides over from whatever direction it was in, sticks to the nearest edge — top, side, underneath — and squashes against it. Out in open space nothing pulls on it, so it floats, bobbing and slowly changing shape.
 
 Open a window on top of it and it hops clear rather than being buried.
+
+---
+
+## Mio Companion widget
+
+Mio Companion is the built-in `openstation/mio` widget. It presents one pixel-art habitat, a greeting target, and three care actions without exposing meters, scores, streaks, or failure states. Its status is a polite live region, all actions are native buttons, and visible plus accessible copy runs through the `desktop-mode` text domain before being inserted as text. It supports a 240 × 360 minimum, 270 × 390 default, and 340 × 460 maximum floating size.
+
+The widget is enabled automatically on its first successful shell boot. That happens once: `mio-companion.auto-pinned.v1` records the successful pin, so removing Mio later remains the user's choice. There is no retry poll. The bundle waits for `wp.os.whenReady()`, makes one deferred `widgetLayer.ensureMounted( 'openstation/mio' )` call, and records the marker only after the layer accepts it.
+
+Companion state lives in the widget-scoped store under `pet-state`. Time away is capped at 72 hours and every need has a non-punitive floor. Everything remains local to the browser; the companion makes no network requests. The widget refreshes every five minutes while the document is visible, pauses its timer while hidden, and releases its timer, document listener, reaction timeout, and DOM on teardown.
+
+The implementation lives in `src/plugins/mio-widget/`, with PHP registration in `includes/widgets/widget-mio.php` and the habitat at `assets/images/mio-lcd-habitat-pixel.webp`. PHP registers `widget-mio[.min].js` and its co-located stylesheet. The CSS is enqueued eagerly on shell pages to avoid an unstyled first mount; the JavaScript stays out of the main desktop bundle and is loaded by server-widget registry sync at shell boot or live activation. It is a separate bundle, not mount-lazy. Runtime art resolves from the core `WidgetContext.pluginUrl`.
+
+Automated checks and builder-operated sessions are **Automated structural proof** and **Author play proof**. They do not establish **Fresh human Fun Proof**; that requires an unfamiliar person using the companion without coaching.
 
 ---
 

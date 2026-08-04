@@ -49,6 +49,7 @@ fi
 declare -a HANDLE_MAP=(
 	"src/recycle-bin/=desktop-mode-recycle-bin"
 	"src/posts-window/=os-posts-window"
+	"src/plugins/mio-widget/=os-mio-widget"
 	"src/=openstation"
 )
 
