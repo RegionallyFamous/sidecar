@@ -1,16 +1,15 @@
 /**
- * Mio companion widget: one compact pixel-art pocket companion.
+ * Mio companion widget: a compact 16-bit pocket companion.
  *
- * OpenStation owns the card chrome. The physical device keeps a fixed,
- * contrast-checked palette while its stepped geometry frames the generated
- * habitat art.
+ * The authored art uses a fixed two-pixel grid. Functional colours resolve
+ * through OpenStation UI tokens so the device remains legible in core themes.
  */
 
 .desktop-mode-widgets__card.desktop-mode-widgets__card--mio-companion,
 .desktop-mode-widgets__card.desktop-mode-widgets__card--mio-companion:hover,
 .os-widgets__card.os-widgets__card--mio-companion,
 .os-widgets__card.os-widgets__card--mio-companion:hover {
-	overflow: visible;
+	overflow: hidden;
 	border-color: transparent;
 	background: none;
 	box-shadow: none;
@@ -24,24 +23,36 @@
 	background: transparent;
 }
 
-.os-widgets__card-body.mio-companion-host,
-.desktop-mode-widgets__card-body.mio-companion-host {
+.desktop-mode-widgets__card-body.mio-companion-host,
+.os-widgets__card-body.mio-companion-host {
 	padding: 0;
 	overflow: hidden;
 	background: transparent;
 }
 
 .mio-companion {
-	--mio-void: #09070e;
-	--mio-shell-edge: #150b1e;
-	--mio-shell: #51245f;
-	--mio-shell-highlight: #d79bff;
-	--mio-shell-shade: #373070;
-	--mio-paper: #fff7ff;
-	--mio-muted: #e6d8ee;
-	--mio-pulse: #ff6fdb;
-	--mio-sirius: #7cf7f2;
-	--mio-focus: #fff36d;
+	--mio-unit: 2px;
+	--mio-void: var(--os-ui-surface-sunken, #1d2327);
+	--mio-shell-edge: var(--os-ui-surface, #2c3338);
+	--mio-shell-shadow: var(--os-ui-surface-elevated, #50575e);
+	--mio-shell: color-mix(
+		in srgb,
+		var(--os-ui-accent-dim, #2271b1) 32%,
+		var(--os-ui-surface-elevated, #50575e)
+	);
+	--mio-shell-midlight: var(--os-ui-accent-dim, #2271b1);
+	--mio-shell-highlight: var(--os-ui-accent-strong, #72aee6);
+	--mio-shell-midshade: var(--os-ui-border-strong, #8c8f94);
+	--mio-shell-shade: color-mix(
+		in srgb,
+		var(--os-ui-accent, #2271b1) 48%,
+		var(--os-ui-surface, #2c3338)
+	);
+	--mio-paper: var(--os-ui-fg, #f0f0f1);
+	--mio-muted: var(--os-ui-fg-muted, #50575e);
+	--mio-pulse: var(--os-ui-accent, #2271b1);
+	--mio-sirius: var(--os-ui-info-fg, #72aee6);
+	--mio-focus: var(--os-ui-warning, #f0b849);
 	display: grid;
 	width: 100%;
 	height: 100%;
@@ -50,7 +61,7 @@
 	padding: 0;
 	overflow: auto;
 	background: transparent;
-	color: var( --mio-paper );
+	color: var(--mio-paper);
 	font-family: var(
 		--os-ui-font-mono,
 		"Geist Mono",
@@ -59,7 +70,6 @@
 		Consolas,
 		monospace
 	);
-	container-type: size;
 	scrollbar-width: thin;
 }
 
@@ -71,10 +81,9 @@
 }
 
 .mio-companion__device {
-	--mio-unit: 3px;
 	position: relative;
-	width: calc( var( --mio-unit ) * 72 );
-	height: calc( var( --mio-unit ) * 100 );
+	width: calc(var(--mio-unit) * 108);
+	height: calc(var(--mio-unit) * 150);
 	flex: 0 0 auto;
 	isolation: isolate;
 	image-rendering: pixelated;
@@ -83,116 +92,138 @@
 .mio-companion__shell-art {
 	position: absolute;
 	inset: 0;
-	z-index: -1;
+	z-index: 0;
 	display: block;
 	width: 100%;
 	height: 100%;
-	overflow: visible;
+	overflow: hidden;
+	pointer-events: none;
 	image-rendering: pixelated;
 }
 
 .mio-companion__loop-shadow,
 .mio-companion__shell-shadow {
-	fill: var( --mio-shell-edge );
+	fill: var(--mio-shell-edge);
 }
 
-.mio-companion__loop-face,
+.mio-companion__loop-face {
+	fill: var(--mio-shell-midlight);
+}
+
 .mio-companion__shell-face {
-	fill: var( --mio-shell );
+	fill: var(--mio-shell);
 }
 
 .mio-companion__loop-hole {
-	fill: var( --mio-void );
+	fill: var(--mio-void);
+}
+
+.mio-companion__shell-midlight {
+	fill: var(--mio-shell-midlight);
 }
 
 .mio-companion__shell-highlight {
-	fill: var( --mio-shell-highlight );
+	fill: var(--mio-shell-highlight);
+}
+
+.mio-companion__shell-midshade {
+	fill: var(--mio-shell-midshade);
 }
 
 .mio-companion__shell-shade {
-	fill: var( --mio-shell-shade );
+	fill: var(--mio-shell-shade);
+}
+
+.mio-companion__title,
+.mio-companion__screen,
+.mio-companion__actions,
+.mio-companion__note {
+	z-index: 1;
 }
 
 .mio-companion__title {
 	position: absolute;
-	top: calc( var( --mio-unit ) * 13 );
-	right: calc( var( --mio-unit ) * 14 );
-	left: calc( var( --mio-unit ) * 14 );
-	margin: 0;
-	color: var( --mio-paper );
-	font-size: calc( var( --mio-unit ) * 2 + 6px );
-	font-weight: 900;
-	letter-spacing: 0.16em;
-	line-height: 1;
-	text-align: center;
-	text-shadow: 0 var( --mio-unit ) 0 var( --mio-shell-edge );
-	text-transform: uppercase;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	border: 0;
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
 
 .mio-companion__screen {
 	position: absolute;
-	top: calc( var( --mio-unit ) * 20 );
-	left: calc( var( --mio-unit ) * 7 );
+	top: calc(var(--mio-unit) * 34);
+	left: calc(var(--mio-unit) * 17);
 	display: block;
-	width: calc( var( --mio-unit ) * 58 );
-	height: calc( var( --mio-unit ) * 49 );
+	width: calc(var(--mio-unit) * 74);
+	height: calc(var(--mio-unit) * 69);
 	overflow: hidden;
-	border: calc( var( --mio-unit ) * 2 ) solid var( --mio-shell-highlight );
-	background-color: var( --mio-void );
-	background-image: var( --mio-habitat-image );
+	border: calc(var(--mio-unit) * 2) solid var(--mio-shell-edge);
+	outline: var(--mio-unit) solid var(--mio-shell-highlight);
+	outline-offset: calc(var(--mio-unit) * -1);
+	background-color: var(--mio-void);
+	background-image: var(--mio-habitat-image);
 	background-position: center;
 	background-repeat: no-repeat;
-	background-size: 118% 118%;
+	background-size: 240px 240px;
 	box-shadow:
-		inset 0 var( --mio-unit ) 0 color-mix(
-			in srgb,
-			var( --mio-shell ) 40%,
-			var( --mio-void )
-		),
-		0 var( --mio-unit ) 0 var( --mio-shell-highlight );
+		inset var(--mio-unit) var(--mio-unit) 0 var(--mio-shell-midlight),
+		inset calc(var(--mio-unit) * -1) calc(var(--mio-unit) * -1) 0 var(--mio-shell-shadow),
+		0 var(--mio-unit) 0 var(--mio-shell-midshade);
 	clip-path: polygon(
-		calc( var( --mio-unit ) * 2 ) 0,
-		calc( 100% - var( --mio-unit ) * 2 ) 0,
-		calc( 100% - var( --mio-unit ) * 2 ) var( --mio-unit ),
-		calc( 100% - var( --mio-unit ) ) var( --mio-unit ),
-		calc( 100% - var( --mio-unit ) ) calc( var( --mio-unit ) * 2 ),
-		100% calc( var( --mio-unit ) * 2 ),
-		100% calc( 100% - var( --mio-unit ) * 2 ),
-		calc( 100% - var( --mio-unit ) ) calc( 100% - var( --mio-unit ) * 2 ),
-		calc( 100% - var( --mio-unit ) ) calc( 100% - var( --mio-unit ) ),
-		calc( 100% - var( --mio-unit ) * 2 ) calc( 100% - var( --mio-unit ) ),
-		calc( 100% - var( --mio-unit ) * 2 ) 100%,
-		calc( var( --mio-unit ) * 2 ) 100%,
-		calc( var( --mio-unit ) * 2 ) calc( 100% - var( --mio-unit ) ),
-		var( --mio-unit ) calc( 100% - var( --mio-unit ) ),
-		var( --mio-unit ) calc( 100% - var( --mio-unit ) * 2 ),
-		0 calc( 100% - var( --mio-unit ) * 2 ),
-		0 calc( var( --mio-unit ) * 2 ),
-		var( --mio-unit ) calc( var( --mio-unit ) * 2 ),
-		var( --mio-unit ) var( --mio-unit ),
-		calc( var( --mio-unit ) * 2 ) var( --mio-unit )
+		calc(var(--mio-unit) * 2) 0,
+		calc(100% - var(--mio-unit) * 2) 0,
+		calc(100% - var(--mio-unit) * 2) var(--mio-unit),
+		calc(100% - var(--mio-unit)) var(--mio-unit),
+		calc(100% - var(--mio-unit)) calc(var(--mio-unit) * 2),
+		100% calc(var(--mio-unit) * 2),
+		100% calc(100% - var(--mio-unit) * 2),
+		calc(100% - var(--mio-unit)) calc(100% - var(--mio-unit) * 2),
+		calc(100% - var(--mio-unit)) calc(100% - var(--mio-unit)),
+		calc(100% - var(--mio-unit) * 2) calc(100% - var(--mio-unit)),
+		calc(100% - var(--mio-unit) * 2) 100%,
+		calc(var(--mio-unit) * 2) 100%,
+		calc(var(--mio-unit) * 2) calc(100% - var(--mio-unit)),
+		var(--mio-unit) calc(100% - var(--mio-unit)),
+		var(--mio-unit) calc(100% - var(--mio-unit) * 2),
+		0 calc(100% - var(--mio-unit) * 2),
+		0 calc(var(--mio-unit) * 2),
+		var(--mio-unit) calc(var(--mio-unit) * 2),
+		var(--mio-unit) var(--mio-unit),
+		calc(var(--mio-unit) * 2) var(--mio-unit)
 	);
 	image-rendering: pixelated;
 }
 
 .mio-companion__mio {
 	position: absolute;
-	top: calc( var( --mio-unit ) * 2 );
+	top: 50%;
 	left: 50%;
 	z-index: 1;
 	display: grid;
-	width: calc( var( --mio-unit ) * 28 );
-	height: calc( var( --mio-unit ) * 28 );
-	min-width: 44px;
-	min-height: 44px;
+	width: calc(var(--mio-unit) * 48);
+	height: calc(var(--mio-unit) * 44);
+	min-width: 48px;
+	min-height: 48px;
 	place-items: center;
 	padding: 0;
 	border: 0;
 	background: transparent;
 	color: inherit;
 	cursor: pointer;
-	transform: translateX( -50% );
+	transform: translate(-50%, -50%);
+	transition:
+		top 100ms steps(2, end),
+		transform 100ms steps(2, end);
 	-webkit-tap-highlight-color: transparent;
+}
+
+.mio-companion[data-message-visible="true"] .mio-companion__mio {
+	top: calc(var(--mio-unit) * 2);
+	transform: translateX(-50%);
 }
 
 body.os-active .mio-companion button {
@@ -201,364 +232,305 @@ body.os-active .mio-companion button {
 
 .mio-companion__mio svg {
 	display: block;
-	width: 100%;
-	height: 100%;
+	width: calc(var(--mio-unit) * 48);
+	height: calc(var(--mio-unit) * 48);
 	overflow: visible;
 	image-rendering: pixelated;
-	animation: mio-companion-float 5s steps( 4, end ) infinite;
+	animation: mio-companion-float 5s steps(8, end) infinite;
 }
 
 .mio-companion__interior {
-	fill: var( --mio-void );
+	fill: var(--mio-void);
 }
 
 .mio-companion__eyes {
-	fill: var( --mio-paper );
+	fill: var(--mio-paper);
 	transform-origin: 24px 22px;
-	animation: mio-companion-blink 5s steps( 1, end ) 2s infinite;
+	animation: mio-companion-blink 5s steps(1, end) 2s infinite;
 }
 
 .mio-companion__mio:focus-visible,
 .mio-companion__control:focus-visible {
-	outline: 0;
-}
-
-.mio-companion__mio:focus-visible svg {
-	outline: 0;
-}
-
-.mio-companion__mio:focus-visible {
-	outline: 3px solid var( --mio-focus );
+	outline: 3px solid var(--mio-focus);
 	outline-offset: -3px;
 }
 
-.mio-companion[data-mood="curious"]
-	.mio-companion__eyes
-	path:first-child {
-	transform: translateY( calc( var( --mio-unit ) * -1 ) );
+.mio-companion[data-mood="curious"] .mio-companion__eyes path:first-child {
+	transform: translateY(calc(var(--mio-unit) * -1));
 }
 
 .mio-companion[data-reaction="boop"] .mio-companion__mio svg {
-	animation: mio-companion-boop 0.5s steps( 3, end );
+	animation: mio-companion-boop .5s steps(4, end);
 }
 
 .mio-companion[data-reaction="starlight"] .mio-companion__mio svg {
-	animation: mio-companion-starlight 520ms steps( 3, end );
+	animation: mio-companion-starlight 520ms steps(4, end);
 }
 
 .mio-companion[data-reaction="quiet"] .mio-companion__mio svg {
-	animation: mio-companion-quiet 520ms steps( 3, end );
+	animation: mio-companion-quiet 520ms steps(4, end);
 }
 
 .mio-companion[data-reaction="quiet"] .mio-companion__eyes {
-	animation: mio-companion-quiet-eyes 520ms steps( 1, end );
+	animation: mio-companion-quiet-eyes 520ms steps(1, end);
 }
 
 .mio-companion[data-reaction="explore"] .mio-companion__mio svg {
-	animation: mio-companion-explore 520ms steps( 3, end );
+	animation: mio-companion-explore 520ms steps(4, end);
 }
 
 .mio-companion[data-reaction="explore"] .mio-companion__eyes {
-	animation: mio-companion-explore-peek 520ms steps( 2, end );
+	animation: mio-companion-explore-peek 520ms steps(3, end);
 }
 
 .mio-companion__status {
 	position: absolute;
-	right: calc( var( --mio-unit ) * 3 );
-	bottom: var( --mio-unit );
-	left: calc( var( --mio-unit ) * 3 );
+	right: calc(var(--mio-unit) * 3);
+	bottom: calc(var(--mio-unit) * 2);
+	left: calc(var(--mio-unit) * 3);
 	z-index: 2;
 	display: grid;
-	height: 39px;
+	height: 44px;
 	place-items: center;
 	margin: 0;
 	padding: 3px 5px;
 	overflow: hidden;
-	border: 2px solid var( --mio-shell-highlight );
-	background: var( --mio-void );
-	color: var( --mio-paper );
-	font-size: calc( var( --mio-unit ) * 2 + 6px );
+	border: var(--mio-unit) solid var(--mio-shell-midlight);
+	background: var(--mio-void);
+	color: var(--mio-paper);
+	font-size: 12px;
 	font-weight: 700;
 	line-height: 1.18;
 	text-align: center;
+	opacity: 0;
+	transform: translateY(var(--mio-unit));
+	transition:
+		opacity 80ms steps(2, end),
+		transform 80ms steps(2, end);
+}
+
+.mio-companion[data-message-visible="true"] .mio-companion__status {
+	opacity: 1;
+	transform: translateY(0);
 }
 
 .mio-companion__actions {
 	position: absolute;
-	top: calc( var( --mio-unit ) * 71 );
-	right: calc( var( --mio-unit ) * 6 );
-	left: calc( var( --mio-unit ) * 6 );
+	top: calc(var(--mio-unit) * 108);
+	right: calc(var(--mio-unit) * 14);
+	left: calc(var(--mio-unit) * 14);
 	display: grid;
-	height: calc( var( --mio-unit ) * 18 );
-	grid-template-columns: repeat( 3, minmax( 0, 1fr ) );
+	height: calc(var(--mio-unit) * 29);
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 	align-items: start;
-	gap: calc( var( --mio-unit ) * 2 );
+	gap: calc(var(--mio-unit) * 3);
 }
 
 .mio-companion__control {
+	--mio-control-offset: 0px;
 	position: relative;
 	display: block;
 	min-width: 0;
-	min-height: calc( var( --mio-unit ) * 18 );
+	min-height: calc(var(--mio-unit) * 29);
 	padding: 0;
 	border: 0;
 	background: transparent;
-	color: var( --mio-paper );
+	color: var(--mio-paper);
 	font: inherit;
 	cursor: pointer;
 	-webkit-tap-highlight-color: transparent;
 }
 
-.mio-companion__control[data-action="quiet"]
-	.mio-companion__control-cap {
-	top: calc( var( --mio-unit ) * 2 );
+.mio-companion__control[data-action="quiet"] {
+	--mio-control-offset: calc(var(--mio-unit) * 3);
+}
+
+.mio-companion__control::before {
+	position: absolute;
+	top: var(--mio-control-offset);
+	left: 50%;
+	width: calc(var(--mio-unit) * 21);
+	height: calc(var(--mio-unit) * 21);
+	border: var(--mio-unit) solid var(--mio-shell-edge);
+	background: var(--mio-shell-shadow);
+	clip-path: polygon(
+		calc(var(--mio-unit) * 2) 0,
+		calc(100% - var(--mio-unit) * 2) 0,
+		calc(100% - var(--mio-unit) * 2) var(--mio-unit),
+		calc(100% - var(--mio-unit)) var(--mio-unit),
+		calc(100% - var(--mio-unit)) calc(var(--mio-unit) * 2),
+		100% calc(var(--mio-unit) * 2),
+		100% calc(100% - var(--mio-unit) * 2),
+		calc(100% - var(--mio-unit)) calc(100% - var(--mio-unit) * 2),
+		calc(100% - var(--mio-unit)) calc(100% - var(--mio-unit)),
+		calc(100% - var(--mio-unit) * 2) calc(100% - var(--mio-unit)),
+		calc(100% - var(--mio-unit) * 2) 100%,
+		calc(var(--mio-unit) * 2) 100%,
+		calc(var(--mio-unit) * 2) calc(100% - var(--mio-unit)),
+		var(--mio-unit) calc(100% - var(--mio-unit)),
+		var(--mio-unit) calc(100% - var(--mio-unit) * 2),
+		0 calc(100% - var(--mio-unit) * 2),
+		0 calc(var(--mio-unit) * 2),
+		var(--mio-unit) calc(var(--mio-unit) * 2),
+		var(--mio-unit) var(--mio-unit),
+		calc(var(--mio-unit) * 2) var(--mio-unit)
+	);
+	content: "";
+	transform: translateX(-50%);
 }
 
 .mio-companion__control-label {
 	position: absolute;
-	top: calc( var( --mio-unit ) * 14 );
-	right: 0;
-	left: 0;
+	top: calc(var(--mio-unit) * 23);
+	right: -2px;
+	left: -2px;
 	display: block;
-	max-width: 100%;
-	overflow: hidden;
-	color: var( --mio-paper );
+	color: var(--mio-paper);
 	font-size: 12px;
 	font-weight: 900;
-	letter-spacing: -0.04em;
+	letter-spacing: -.08em;
 	line-height: 1;
 	text-align: center;
 	text-transform: uppercase;
-	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
 .mio-companion__control-cap {
 	position: absolute;
-	top: 0;
+	top: calc(var(--mio-control-offset) + var(--mio-unit) * 2);
 	left: 50%;
 	display: grid;
-	width: calc( var( --mio-unit ) * 11 );
-	height: calc( var( --mio-unit ) * 11 );
-	flex: 0 0 calc( var( --mio-unit ) * 11 );
+	width: calc(var(--mio-unit) * 18);
+	height: calc(var(--mio-unit) * 18);
 	place-items: center;
-	border: var( --mio-unit ) solid var( --mio-shell-highlight );
-	background: var( --mio-shell );
+	border: var(--mio-unit) solid var(--mio-shell-midlight);
+	background: var(--mio-shell);
 	box-shadow:
-		inset 0 var( --mio-unit ) 0 var( --mio-shell-highlight ),
-		0 var( --mio-unit ) 0 var( --mio-shell-edge );
+		inset 0 var(--mio-unit) 0 var(--mio-shell-highlight),
+		0 var(--mio-unit) 0 var(--mio-shell-edge);
 	clip-path: polygon(
-		calc( var( --mio-unit ) * 2 ) 0,
-		calc( 100% - var( --mio-unit ) * 2 ) 0,
-		calc( 100% - var( --mio-unit ) * 2 ) var( --mio-unit ),
-		calc( 100% - var( --mio-unit ) ) var( --mio-unit ),
-		calc( 100% - var( --mio-unit ) ) calc( var( --mio-unit ) * 2 ),
-		100% calc( var( --mio-unit ) * 2 ),
-		100% calc( 100% - var( --mio-unit ) * 2 ),
-		calc( 100% - var( --mio-unit ) ) calc( 100% - var( --mio-unit ) * 2 ),
-		calc( 100% - var( --mio-unit ) ) calc( 100% - var( --mio-unit ) ),
-		calc( 100% - var( --mio-unit ) * 2 ) calc( 100% - var( --mio-unit ) ),
-		calc( 100% - var( --mio-unit ) * 2 ) 100%,
-		calc( var( --mio-unit ) * 2 ) 100%,
-		calc( var( --mio-unit ) * 2 ) calc( 100% - var( --mio-unit ) ),
-		var( --mio-unit ) calc( 100% - var( --mio-unit ) ),
-		var( --mio-unit ) calc( 100% - var( --mio-unit ) * 2 ),
-		0 calc( 100% - var( --mio-unit ) * 2 ),
-		0 calc( var( --mio-unit ) * 2 ),
-		var( --mio-unit ) calc( var( --mio-unit ) * 2 ),
-		var( --mio-unit ) var( --mio-unit ),
-		calc( var( --mio-unit ) * 2 ) var( --mio-unit )
+		calc(var(--mio-unit) * 2) 0,
+		calc(100% - var(--mio-unit) * 2) 0,
+		calc(100% - var(--mio-unit) * 2) var(--mio-unit),
+		calc(100% - var(--mio-unit)) var(--mio-unit),
+		calc(100% - var(--mio-unit)) calc(var(--mio-unit) * 2),
+		100% calc(var(--mio-unit) * 2),
+		100% calc(100% - var(--mio-unit) * 2),
+		calc(100% - var(--mio-unit)) calc(100% - var(--mio-unit) * 2),
+		calc(100% - var(--mio-unit)) calc(100% - var(--mio-unit)),
+		calc(100% - var(--mio-unit) * 2) calc(100% - var(--mio-unit)),
+		calc(100% - var(--mio-unit) * 2) 100%,
+		calc(var(--mio-unit) * 2) 100%,
+		calc(var(--mio-unit) * 2) calc(100% - var(--mio-unit)),
+		var(--mio-unit) calc(100% - var(--mio-unit)),
+		var(--mio-unit) calc(100% - var(--mio-unit) * 2),
+		0 calc(100% - var(--mio-unit) * 2),
+		0 calc(var(--mio-unit) * 2),
+		var(--mio-unit) calc(var(--mio-unit) * 2),
+		var(--mio-unit) var(--mio-unit),
+		calc(var(--mio-unit) * 2) var(--mio-unit)
 	);
-	transform: translateX( -50% );
+	transform: translateX(-50%);
 }
 
 .mio-companion__control-cap svg {
-	width: calc( var( --mio-unit ) * 4 );
-	height: calc( var( --mio-unit ) * 4 );
-	fill: var( --mio-pulse );
+	width: calc(var(--mio-unit) * 12);
+	height: calc(var(--mio-unit) * 12);
+	fill: var(--mio-pulse);
 	image-rendering: pixelated;
 }
 
-.mio-companion__control[data-action="quiet"]
-	.mio-companion__control-cap
-	svg {
-	fill: var( --mio-sirius );
+.mio-companion__control[data-action="quiet"] .mio-companion__control-cap svg {
+	fill: var(--mio-sirius);
 }
 
-.mio-companion__control[data-action="explore"]
-	.mio-companion__control-cap
-	svg {
-	fill: var( --mio-focus );
-}
-
-.mio-companion__control:focus-visible .mio-companion__control-cap {
-	outline: 3px solid var( --mio-focus );
-	outline-offset: 2px;
+.mio-companion__control[data-action="explore"] .mio-companion__control-cap svg {
+	fill: var(--mio-focus);
 }
 
 .mio-companion__control:active .mio-companion__control-cap {
-	transform: translate( -50%, var( --mio-unit ) );
-	box-shadow: inset 0 var( --mio-unit ) 0 color-mix(
-		in srgb,
-		var( --mio-shell ) 72%,
-		var( --mio-void )
-	);
+	transform: translate(-50%, var(--mio-unit));
+	box-shadow: inset 0 var(--mio-unit) 0 var(--mio-shell-shadow);
 }
 
 .mio-companion__note {
 	position: absolute;
-	right: calc( var( --mio-unit ) * 6 );
-	bottom: var( --mio-unit );
-	left: calc( var( --mio-unit ) * 6 );
+	right: calc(var(--mio-unit) * 14);
+	bottom: calc(var(--mio-unit) * 4);
+	left: calc(var(--mio-unit) * 14);
 	display: none;
-	min-height: calc( var( --mio-unit ) * 6 );
-	place-items: center;
 	margin: 0;
-	color: var( --mio-muted );
+	color: var(--mio-muted);
 	font-size: 12px;
 	font-weight: 800;
-	letter-spacing: -0.04em;
-	line-height: 1.05;
+	line-height: 1;
 	text-align: center;
-	text-transform: uppercase;
-}
-
-@container ( min-width: 304px ) and ( min-height: 420px ) {
-	.mio-companion__device {
-		--mio-unit: 4px;
-	}
-
-	.mio-companion__note {
-		display: grid;
-	}
-
-	.mio-companion__control-label {
-		font-size: 12px;
-	}
 }
 
 @keyframes mio-companion-float {
-	0%,
-	100% {
-		transform: translate( 0, 0 );
-	}
-	25% {
-		transform: translate(
-			calc( var( --mio-unit ) * -1 ),
-			var( --mio-unit )
-		);
-	}
-	50% {
-		transform: translate( 0, calc( var( --mio-unit ) * -1 ) );
-	}
-	75% {
-		transform: translate( var( --mio-unit ), 0 );
-	}
+	0%, 100% { transform: translate(0, 0); }
+	25% { transform: translate(calc(var(--mio-unit) * -1), var(--mio-unit)); }
+	50% { transform: translate(0, calc(var(--mio-unit) * -1)); }
+	75% { transform: translate(var(--mio-unit), 0); }
 }
 
 @keyframes mio-companion-blink {
-	0%,
-	88%,
-	100% {
-		opacity: 1;
-	}
-	90%,
-	94% {
-		opacity: 0;
-	}
+	0%, 88%, 100% { opacity: 1; }
+	90%, 94% { opacity: 0; }
 }
 
 @keyframes mio-companion-boop {
-	0%,
-	100% {
-		transform: translate( 0, 0 );
-	}
-	40% {
-		transform: translate( 0, var( --mio-unit ) );
-	}
-	72% {
-		transform: translate( 0, calc( var( --mio-unit ) * -1 ) );
-	}
+	0%, 100% { transform: translate(0, 0); }
+	40% { transform: translate(0, var(--mio-unit)); }
+	72% { transform: translate(0, calc(var(--mio-unit) * -1)); }
 }
 
 @keyframes mio-companion-starlight {
-	0%,
-	100% {
-		transform: translate( 0, 0 );
-	}
-	48% {
-		transform: translate( 0, calc( var( --mio-unit ) * -3 ) );
-	}
-	76% {
-		transform: translate( 0, calc( var( --mio-unit ) * -1 ) );
-	}
+	0%, 100% { transform: translate(0, 0); }
+	48% { transform: translate(0, calc(var(--mio-unit) * -3)); }
+	76% { transform: translate(0, calc(var(--mio-unit) * -1)); }
 }
 
 @keyframes mio-companion-quiet {
-	0%,
-	100% {
-		transform: translate( 0, 0 );
-	}
-	55% {
-		transform: translate( 0, calc( var( --mio-unit ) * 2 ) );
-	}
+	0%, 100% { transform: translate(0, 0); }
+	55% { transform: translate(0, calc(var(--mio-unit) * 2)); }
 }
 
 @keyframes mio-companion-quiet-eyes {
-	0%,
-	100% {
-		opacity: 1;
-	}
-	38%,
-	76% {
-		opacity: 0;
-	}
+	0%, 100% { opacity: 1; }
+	38%, 76% { opacity: 0; }
 }
 
 @keyframes mio-companion-explore {
-	0%,
-	100% {
-		transform: translate( 0, 0 );
-	}
-	52% {
-		transform: translate(
-			calc( var( --mio-unit ) * 3 ),
-			calc( var( --mio-unit ) * -1 )
-		);
-	}
-	76% {
-		transform: translate( var( --mio-unit ), 0 );
-	}
+	0%, 100% { transform: translate(0, 0); }
+	52% { transform: translate(calc(var(--mio-unit) * 3), calc(var(--mio-unit) * -1)); }
+	76% { transform: translate(var(--mio-unit), 0); }
 }
 
 @keyframes mio-companion-explore-peek {
-	0%,
-	100% {
-		transform: translate( 0, 0 );
-	}
-	48%,
-	74% {
-		transform: translate( calc( var( --mio-unit ) * 2 ), 0 );
-	}
+	0%, 100% { transform: translate(0, 0); }
+	48%, 74% { transform: translate(calc(var(--mio-unit) * 2), 0); }
 }
 
-@media ( prefers-reduced-motion: reduce ) {
+@media (prefers-reduced-motion: reduce) {
 	.mio-companion *,
 	.mio-companion *::before,
 	.mio-companion *::after {
 		scroll-behavior: auto !important;
-		animation-duration: 0.001ms !important;
+		animation-duration: .001ms !important;
 		animation-iteration-count: 1 !important;
-		transition-duration: 0.001ms !important;
+		transition-duration: .001ms !important;
 	}
 }
 
-@media ( forced-colors: active ) {
+@media (forced-colors: active) {
 	.mio-companion__loop-shadow,
 	.mio-companion__shell-shadow,
 	.mio-companion__loop-face,
 	.mio-companion__shell-face,
+	.mio-companion__shell-midlight,
 	.mio-companion__shell-highlight,
+	.mio-companion__shell-midshade,
 	.mio-companion__shell-shade {
 		fill: Canvas;
 		stroke: CanvasText;
@@ -572,13 +544,15 @@ body.os-active .mio-companion button {
 
 	.mio-companion__screen {
 		border-color: CanvasText;
+		outline-color: CanvasText;
 		background: Canvas;
 		background-image: none;
 		box-shadow: none;
 	}
 
 	.mio-companion__status,
-	.mio-companion__control-cap {
+	.mio-companion__control-cap,
+	.mio-companion__control::before {
 		border: 2px solid ButtonText;
 		background: ButtonFace;
 		box-shadow: none;
@@ -593,7 +567,7 @@ body.os-active .mio-companion button {
 	}
 
 	.mio-companion__mio:focus-visible,
-	.mio-companion__control:focus-visible .mio-companion__control-cap {
+	.mio-companion__control:focus-visible {
 		outline-color: Highlight;
 	}
 }

@@ -10,6 +10,7 @@ import type { WidgetContext, WidgetTeardown } from '../../widgets/types';
 
 const STORAGE_KEY = 'pet-state';
 const REFRESH_MS = 5 * 60 * 1000;
+const MESSAGE_VISIBLE_MS = 2600;
 let instanceCounter = 0;
 
 export function mountMioWidget(
@@ -20,6 +21,7 @@ export function mountMioWidget(
 	let destroyed = false;
 	let refreshId: ReturnType< typeof setInterval > | null = null;
 	let reactionId: ReturnType< typeof setTimeout > | null = null;
+	let messageId: ReturnType< typeof setTimeout > | null = null;
 	let state = restorePetState( ctx.storage.get( STORAGE_KEY ), Date.now() );
 	const instanceId = `mio-companion-${ ++instanceCounter }`;
 
@@ -85,12 +87,25 @@ export function mountMioWidget(
 			status.textContent = message;
 		}
 	};
+	const showMessage = ( message: string ): void => {
+		setStatus( message );
+		root.dataset.messageVisible = 'true';
+		if ( messageId !== null ) {
+			clearTimeout( messageId );
+		}
+		messageId = setTimeout( () => {
+			if ( destroyed ) {
+				return;
+			}
+			delete root.dataset.messageVisible;
+			setStatus( '' );
+			messageId = null;
+		}, MESSAGE_VISIBLE_MS );
+	};
 
-	const render = ( announcement?: string ): void => {
+	const render = (): void => {
 		const mood = getMood( state );
-		const presentation = copy.moods[ mood ];
 		root.dataset.mood = mood;
-		setStatus( announcement ?? presentation.status );
 	};
 
 	const react = ( reaction: CareAction | 'boop' ): void => {
@@ -121,7 +136,7 @@ export function mountMioWidget(
 
 		if ( button.dataset.action === 'boop' ) {
 			react( 'boop' );
-			render( copy.greetReaction );
+			showMessage( copy.greetReaction );
 			return;
 		}
 
@@ -130,7 +145,8 @@ export function mountMioWidget(
 			state = applyCareAction( state, action, Date.now() );
 			persist();
 			react( action );
-			render( copy.actions[ action ].reaction );
+			render();
+			showMessage( copy.actions[ action ].reaction );
 		}
 	};
 
@@ -182,6 +198,10 @@ export function mountMioWidget(
 			clearTimeout( reactionId );
 			reactionId = null;
 		}
+		if ( messageId !== null ) {
+			clearTimeout( messageId );
+			messageId = null;
+		}
 		root.removeEventListener( 'click', onClick );
 		document.removeEventListener( 'visibilitychange', onVisibilityChange );
 		root.remove();
@@ -197,14 +217,16 @@ function buildMarkup( instanceId: string ): string {
 	const gradientId = `${ instanceId }-miomesh`;
 	return `
 		<div class="mio-companion__device">
-			<svg class="mio-companion__shell-art" viewBox="0 0 72 100" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
-				<path class="mio-companion__loop-shadow" d="M31 0H41V1H44V3H46V8H44V10H41V11H31V10H28V8H26V3H28V1H31Z" />
-				<path class="mio-companion__loop-face" d="M32 1H40V2H43V4H44V7H42V9H30V8H28V4H30V2H32Z" />
-				<path class="mio-companion__loop-hole" d="M33 3H39V4H41V7H39V8H33V7H31V4H33Z" />
-				<path class="mio-companion__shell-shadow" d="M29 8H43V9H49V11H54V14H59V18H63V23H66V29H69V36H71V58H70V67H68V75H65V82H61V88H56V93H50V96H44V98H40V100H32V99H27V97H22V94H17V90H13V85H9V79H6V72H4V64H2V56H1V37H2V30H4V24H7V19H11V15H16V12H22V10H29Z" />
-				<path class="mio-companion__shell-face" d="M29 10H43V11H49V13H54V16H58V20H61V25H64V31H67V38H69V57H68V66H66V74H63V80H59V86H54V90H48V93H42V95H39V97H33V96H28V94H23V91H18V87H14V82H10V76H8V70H6V62H4V55H3V38H4V31H6V25H9V20H13V16H18V13H23V11H29Z" />
-				<path class="mio-companion__shell-highlight" d="M29 11H23V13H18V16H14V20H10V25H8V31H6V38H5V55H6V62H8V69H10V75H12V70H10V62H8V54H7V39H8V32H10V26H13V21H17V17H22V14H29Z" />
-				<path class="mio-companion__shell-shade" d="M64 31H67V38H69V57H68V66H66V74H63V80H59V86H54V90H48V93H42V95H38V92H47V89H53V85H58V79H61V73H63V65H65Z" />
+			<svg class="mio-companion__shell-art" viewBox="0 0 108 150" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
+				<path class="mio-companion__loop-shadow" d="M46 0H62V1H67V3H70V6H72V12H70V15H67V17H41V15H38V12H36V6H38V3H41V1H46Z" />
+				<path class="mio-companion__loop-face" d="M47 2H61V3H65V5H68V7H69V11H67V13H41V11H39V7H41V4H47Z" />
+				<path class="mio-companion__loop-hole" d="M48 5H60V6H64V8H66V11H64V12H44V11H42V8H44V6H48Z" />
+				<path class="mio-companion__shell-shadow" d="M43 12H65V13H74V15H82V18H89V22H95V28H100V36H104V46H107V58H108V90H107V102H105V114H106V126H105V136H104V142H96V146H87V148H72V149H65V150H46V149H39V148H27V147H17V143H9V138H4V130H1V119H0V58H1V47H4V37H8V29H13V23H19V18H27V15H36V13H43Z" />
+				<path class="mio-companion__shell-face" d="M45 17H63V18H73V20H81V23H88V27H94V33H98V40H101V50H104V61H106V90H105V101H103V114H104V126H103V140H94V144H85V146H72V147H65V148H45V147H38V146H29V145H19V141H8V136H5V128H4V117H2V59H3V49H6V40H10V33H15V27H21V23H29V20H37V18H45Z" />
+				<path class="mio-companion__shell-midlight" d="M45 19H37V21H29V24H22V28H16V34H12V42H8V51H6V61H5V97H7V108H9V117H12V125H15V120H13V110H11V98H9V62H10V52H13V43H17V35H23V29H30V25H38V22H45Z" />
+				<path class="mio-companion__shell-highlight" d="M44 20H38V22H30V25H24V29H18V35H14V42H11V51H9V62H8V82H10V62H11V52H14V43H18V36H24V30H31V26H39V23H44Z" />
+				<path class="mio-companion__shell-midshade" d="M101 49H104V61H106V90H105V101H102V112H98V122H93V130H87V136H79V141H70V144H62V146H46V143H69V140H78V136H85V131H91V124H95V115H99V104H101Z" />
+				<path class="mio-companion__shell-shade" d="M104 61H106V90H105V101H102V112H98V122H93V130H87V136H79V140H72V137H79V133H86V127H91V120H95V111H98V100H100V90H102V62Z" />
 			</svg>
 			<h2 class="mio-companion__title"></h2>
 			<div class="mio-companion__screen" role="group">
@@ -213,13 +235,19 @@ function buildMarkup( instanceId: string ): string {
 						<defs>
 							<linearGradient id="${ gradientId }" x1="8" y1="7" x2="41" y2="40" gradientUnits="userSpaceOnUse">
 								<stop offset="0" stop-color="#f252fc" />
-								<stop offset=".32" stop-color="#f252fc" />
-								<stop offset=".32" stop-color="#cf61f7" />
-								<stop offset=".58" stop-color="#cf61f7" />
-								<stop offset=".58" stop-color="#9d76ff" />
-								<stop offset=".78" stop-color="#9d76ff" />
-								<stop offset=".78" stop-color="#554cff" />
-								<stop offset="1" stop-color="#554cff" />
+								<stop offset=".14" stop-color="#f252fc" />
+								<stop offset=".14" stop-color="#e05afb" />
+								<stop offset=".28" stop-color="#e05afb" />
+								<stop offset=".28" stop-color="#c363fb" />
+								<stop offset=".42" stop-color="#c363fb" />
+								<stop offset=".42" stop-color="#aa67ff" />
+								<stop offset=".56" stop-color="#aa67ff" />
+								<stop offset=".56" stop-color="#a580ff" />
+								<stop offset=".7" stop-color="#a580ff" />
+								<stop offset=".7" stop-color="#7c68ff" />
+								<stop offset=".84" stop-color="#7c68ff" />
+								<stop offset=".84" stop-color="#4b3eff" />
+								<stop offset="1" stop-color="#4b3eff" />
 							</linearGradient>
 						</defs>
 						<path class="mio-companion__ring" fill="url(#${ gradientId })" d="M18 4H29V5H34V7H38V9H41V13H43V18H44V29H43V34H41V38H38V41H33V43H29V42H26V40H23V42H19V43H14V42H11V40H8V37H6V33H5V18H6V14H8V10H11V7H15V5H18Z" />

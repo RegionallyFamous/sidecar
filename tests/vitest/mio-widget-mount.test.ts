@@ -87,8 +87,20 @@ describe( 'Mio companion mount', () => {
 				?.getAttribute( 'shape-rendering' ),
 		).toBe( 'crispEdges' );
 		expect(
+			container.querySelector( '.mio-companion__shell-art' )
+				?.getAttribute( 'viewBox' ),
+		).toBe( '0 0 108 150' );
+		expect(
+			container.querySelectorAll( '.mio-companion__shell-art path' ),
+		).toHaveLength( 9 );
+		expect(
 			container.querySelector( '[data-action="boop"] linearGradient' ),
 		).not.toBeNull();
+		expect(
+			container.querySelectorAll(
+				'[data-action="boop"] linearGradient stop',
+			),
+		).toHaveLength( 14 );
 		expect( container.querySelector( '.mio-companion__ring' ) ).not.toBeNull();
 		expect(
 			container.querySelector( '.mio-companion__interior' ),
@@ -97,6 +109,10 @@ describe( 'Mio companion mount', () => {
 		expect(
 			container.querySelector( '.mio-companion__eyes rect[rx]' ),
 		).toBeNull();
+		expect(
+			container.querySelector( '[role="status"]' )?.textContent,
+		).toBe( '' );
+		expect( widgetRoot().dataset.messageVisible ).toBeUndefined();
 		expect(
 			Array.from(
 				container.querySelectorAll< HTMLElement >(
@@ -174,7 +190,7 @@ describe( 'Mio companion mount', () => {
 		).toEqual( [ '<b>Light</b>', '<b>Quiet</b>', '<b>Explore</b>' ] );
 		expect(
 			container.querySelector( '[role="status"]' )?.textContent,
-		).toBe( '<b>Mio is glowing softly.</b>' );
+		).toBe( '' );
 		expect(
 			container.querySelector( '.mio-companion__screen' )
 				?.getAttribute( 'aria-label' ),
@@ -191,6 +207,40 @@ describe( 'Mio companion mount', () => {
 			container.querySelector( '[role="status"]' )?.textContent,
 		).toBe( '<b>Mio rests quietly.</b>' );
 		expect( container.querySelector( 'b' ) ).toBeNull();
+
+		teardown();
+	} );
+
+	test( 'shows reaction copy temporarily and restarts the window for a new action', () => {
+		const container = document.querySelector< HTMLElement >( '#widget' )!;
+		const teardown = mountMioWidget( container, createContext() );
+		const root = widgetRoot();
+		const status = container.querySelector< HTMLElement >(
+			'[role="status"]',
+		)!;
+
+		expect( status.textContent ).toBe( '' );
+		expect( root.dataset.messageVisible ).toBeUndefined();
+
+		container.querySelector< HTMLButtonElement >(
+			'[data-action="boop"]',
+		)!.click();
+		expect( status.textContent ).toBe( 'Mio drifts closer.' );
+		expect( root.dataset.messageVisible ).toBe( 'true' );
+
+		vi.advanceTimersByTime( 2000 );
+		container.querySelector< HTMLButtonElement >(
+			'[data-action="quiet"]',
+		)!.click();
+		expect( status.textContent ).toBe( 'Mio rests quietly.' );
+
+		vi.advanceTimersByTime( 2599 );
+		expect( status.textContent ).toBe( 'Mio rests quietly.' );
+		expect( root.dataset.messageVisible ).toBe( 'true' );
+
+		vi.advanceTimersByTime( 1 );
+		expect( status.textContent ).toBe( '' );
+		expect( root.dataset.messageVisible ).toBeUndefined();
 
 		teardown();
 	} );
