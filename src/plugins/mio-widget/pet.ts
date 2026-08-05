@@ -2,10 +2,10 @@ export const PET_STATE_VERSION = 2;
 export const MIN_METER = 20;
 export const MAX_METER = 100;
 export const MAX_CATCH_UP_MS = 72 * 60 * 60 * 1000;
-export const EXPEDITION_DEPART_MS = 6_000;
-export const EXPEDITION_LIGHT_MS = 8_000;
-export const EXPEDITION_EXPLORE_MS = 10_000;
-export const EXPEDITION_RETURN_MS = 6_000;
+export const EXPEDITION_DEPART_MS = 1_800;
+export const EXPEDITION_LIGHT_MS = 2_200;
+export const EXPEDITION_EXPLORE_MS = 2_600;
+export const EXPEDITION_RETURN_MS = 2_000;
 
 const HOUR_MS = 60 * 60 * 1000;
 

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
 	EXPEDITION_DEPART_MS,
 	EXPEDITION_EXPLORE_MS,
+	EXPEDITION_LIGHT_MS,
 	EXPEDITION_RETURN_MS,
 	MAX_CATCH_UP_MS,
 	applyCareAction,
@@ -96,7 +97,18 @@ describe( 'Mio companion state', () => {
 		} );
 	} );
 
-	test( 'completes a deterministic bold tiny expedition in about thirty seconds', () => {
+	test( 'completes deterministic expeditions in about ten seconds plus choices', () => {
+		expect(
+			EXPEDITION_DEPART_MS +
+				EXPEDITION_EXPLORE_MS * 2 +
+				EXPEDITION_RETURN_MS,
+		).toBe( 9_000 );
+		expect(
+			EXPEDITION_DEPART_MS +
+				EXPEDITION_LIGHT_MS * 3 +
+				EXPEDITION_RETURN_MS,
+		).toBe( 10_400 );
+
 		let state = createPetState( NOW );
 		const departed = applyCompanionAction( state, 'explore', NOW );
 		state = departed.state;

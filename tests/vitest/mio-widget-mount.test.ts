@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __ } from '../../src/i18n';
 import { createMioCopy } from '../../src/plugins/mio-widget/copy';
 import { mountMioWidget } from '../../src/plugins/mio-widget/mount';
+import {
+	EXPEDITION_DEPART_MS,
+	EXPEDITION_EXPLORE_MS,
+	EXPEDITION_RETURN_MS,
+} from '../../src/plugins/mio-widget/pet';
 import type {
 	WidgetContext,
 	WidgetStorage,
@@ -171,7 +176,7 @@ describe( 'Mio companion mount', () => {
 		expect( container.querySelector( 'b' ) ).toBeNull();
 		expect( translate ).toHaveBeenCalledWith( 'Mio', 'desktop-mode' );
 		expect( translate ).toHaveBeenCalledWith(
-			'Mio found a tiny door.',
+			'A tiny door!',
 			'desktop-mode',
 		);
 		expect(
@@ -226,7 +231,7 @@ describe( 'Mio companion mount', () => {
 			'[data-action="boop"]',
 		)!.click();
 		expect( status.textContent ).toBe(
-			'Explore starts a tiny trip. Light guides; Quiet calls Mio home.',
+			'Light guides. Explore goes deep. Quiet calls Mio home.',
 		);
 		expect( root.dataset.messageVisible ).toBe( 'true' );
 
@@ -288,7 +293,7 @@ describe( 'Mio companion mount', () => {
 		} );
 		expect(
 			container.querySelector( '[role="status"]' )?.textContent,
-		).toBe( 'Mio found a tiny door.' );
+		).toBe( 'A tiny door!' );
 
 		teardown();
 	} );
@@ -306,31 +311,31 @@ describe( 'Mio companion mount', () => {
 		container.querySelector< HTMLButtonElement >(
 			'[data-action="explore"]',
 		)!.click();
-		expect( status.textContent ).toBe( 'Mio found a tiny door.' );
+		expect( status.textContent ).toBe( 'A tiny door!' );
 		expect( controls.every( ( button ) => button.disabled ) ).toBe( true );
 
-		vi.advanceTimersByTime( 6_000 );
+		vi.advanceTimersByTime( EXPEDITION_DEPART_MS );
 		expect( status.textContent ).toBe(
-			'A fork: Light, Explore, or Quiet?',
+			'Light, Explore, or Quiet?',
 		);
 		expect( controls.every( ( button ) => ! button.disabled ) ).toBe( true );
 
 		container.querySelector< HTMLButtonElement >(
 			'[data-action="explore"]',
 		)!.click();
-		expect( status.textContent ).toBe( 'Mio slips past the bright edge.' );
-		vi.advanceTimersByTime( 10_000 );
+		expect( status.textContent ).toBe( 'Mio goes deeper.' );
+		vi.advanceTimersByTime( EXPEDITION_EXPLORE_MS );
 		expect( status.textContent ).toBe(
-			'A fork: Light, Explore, or Quiet?',
+			'Light, Explore, or Quiet?',
 		);
 
 		container.querySelector< HTMLButtonElement >(
 			'[data-action="explore"]',
 		)!.click();
-		vi.advanceTimersByTime( 10_000 );
-		expect( status.textContent ).toBe( 'Mio is finding the way home.' );
-		vi.advanceTimersByTime( 6_000 );
-		expect( status.textContent ).toBe( 'Mio brought back a paper star.' );
+		vi.advanceTimersByTime( EXPEDITION_EXPLORE_MS );
+		expect( status.textContent ).toBe( 'Mio heads home.' );
+		vi.advanceTimersByTime( EXPEDITION_RETURN_MS );
+		expect( status.textContent ).toBe( 'Mio found a paper star.' );
 		expect( controls.every( ( button ) => ! button.disabled ) ).toBe( true );
 		expect( container.querySelectorAll( 'button' ) ).toHaveLength( 4 );
 

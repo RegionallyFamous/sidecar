@@ -226,8 +226,12 @@
 	transform: translateX(-50%);
 }
 
-body.os-active .mio-companion button {
+body.os-active .mio-companion button:not(:disabled) {
 	cursor: pointer !important;
+}
+
+body.os-active .mio-companion button:disabled {
+	cursor: default !important;
 }
 
 .mio-companion__mio svg {
@@ -290,11 +294,12 @@ body.os-active .mio-companion button {
 	left: calc(var(--mio-unit) * 3);
 	z-index: 2;
 	display: grid;
-	height: 44px;
+	height: auto;
+	min-height: 44px;
 	place-items: center;
 	margin: 0;
 	padding: 3px 5px;
-	overflow: hidden;
+	overflow: visible;
 	border: var(--mio-unit) solid var(--mio-shell-midlight);
 	background: var(--mio-void);
 	color: var(--mio-paper);
@@ -302,7 +307,11 @@ body.os-active .mio-companion button {
 	font-weight: 700;
 	line-height: 1.18;
 	text-align: center;
+	text-wrap: balance;
+	overflow-wrap: anywhere;
+	hyphens: auto;
 	opacity: 0;
+	pointer-events: none;
 	transform: translateY(var(--mio-unit));
 	transition:
 		opacity 80ms steps(2, end),
