@@ -130,9 +130,14 @@ export function createWidgetRegistrySync(
 			// again.
 			return;
 		}
+		// Mark the id before registration fires `os.widget.registered` so a
+		// subscriber that synchronously triggers another sync cannot register the
+		// same definition twice. Roll the marker back if validation rejects it.
+		registered.add( entry.id );
 		try {
 			registry.register( def );
 		} catch ( err ) {
+			registered.delete( entry.id );
 			doAction( HOOKS.SHELL_ERROR, {
 				scope: 'widget-register',
 				id: entry.id,
@@ -140,7 +145,6 @@ export function createWidgetRegistrySync(
 			} );
 			return;
 		}
-		registered.add( entry.id );
 		// Refresh the picker so the new widget shows up in its
 		// available list right away. If the user had this widget
 		// in their enabled list (from a prior activation or an

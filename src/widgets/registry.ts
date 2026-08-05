@@ -10,7 +10,7 @@
  * rehydrates, never per-frame.
  */
 
-import { applyFilters, HOOKS } from '../hooks';
+import { applyFilters, doAction, HOOKS } from '../hooks';
 import {
 	collectRegistrationErrors,
 	throwOnRegistrationErrors,
@@ -37,6 +37,7 @@ export function register( def: WidgetDef ): void {
 	} else {
 		seed.push( def );
 	}
+	doAction( HOOKS.WIDGET_REGISTERED, { id: def.id, def } );
 }
 
 /** Remove a widget definition by id. */

@@ -1,11 +1,15 @@
 import { createMioCopy, type MioCopy } from './copy';
 import {
-	applyCareAction,
+	applyCompanionAction,
 	catchUpPet,
+	getNextTransitionAt,
 	getMood,
 	restorePetState,
 	type CareAction,
+	type PetState,
 } from './pet';
+import { MioSfx } from './sfx';
+import { bindMioSoundMenu, readMioSoundEnabled } from './sound-menu';
 import type { WidgetContext, WidgetTeardown } from '../../widgets/types';
 
 const STORAGE_KEY = 'pet-state';
@@ -22,7 +26,9 @@ export function mountMioWidget(
 	let refreshId: ReturnType< typeof setInterval > | null = null;
 	let reactionId: ReturnType< typeof setTimeout > | null = null;
 	let messageId: ReturnType< typeof setTimeout > | null = null;
+	let phaseId: ReturnType< typeof setTimeout > | null = null;
 	let state = restorePetState( ctx.storage.get( STORAGE_KEY ), Date.now() );
+	const audio = new MioSfx( readMioSoundEnabled( ctx ) );
 	const instanceId = `mio-companion-${ ++instanceCounter }`;
 
 	const root = document.createElement( 'section' );
@@ -52,6 +58,11 @@ export function mountMioWidget(
 			root,
 			'[data-action="explore"] .mio-companion__control-label',
 		),
+	};
+	const actionButtons: Record< CareAction, HTMLButtonElement > = {
+		starlight: required( root, '[data-action="starlight"]' ),
+		quiet: required( root, '[data-action="quiet"]' ),
+		explore: required( root, '[data-action="explore"]' ),
 	};
 
 	title.id = `${ instanceId }-title`;
@@ -106,6 +117,16 @@ export function mountMioWidget(
 	const render = (): void => {
 		const mood = getMood( state );
 		root.dataset.mood = mood;
+		const phase = state.expedition?.phase;
+		if ( phase ) {
+			root.dataset.expeditionPhase = phase;
+		} else {
+			delete root.dataset.expeditionPhase;
+		}
+		const choicesOpen = ! phase || phase === 'choice';
+		for ( const button of Object.values( actionButtons ) ) {
+			button.disabled = ! choicesOpen;
+		}
 	};
 
 	const react = ( reaction: CareAction | 'boop' ): void => {
@@ -124,6 +145,63 @@ export function mountMioWidget(
 		}, 520 );
 	};
 
+	const clearPhaseTimer = (): void => {
+		if ( phaseId !== null ) {
+			clearTimeout( phaseId );
+			phaseId = null;
+		}
+	};
+
+	const announceTransition = ( previous: PetState ): void => {
+		if (
+			state.lastHomecomingAtMs !== null &&
+			state.lastHomecomingAtMs !== previous.lastHomecomingAtMs &&
+			state.lastHomecoming
+		) {
+			showMessage( copy.expedition.homecomings[ state.lastHomecoming ] );
+			return;
+		}
+		const previousPhase = previous.expedition?.phase;
+		const phase = state.expedition?.phase;
+		if ( phase === previousPhase ) {
+			return;
+		}
+		if ( phase === 'choice' ) {
+			showMessage( copy.expedition.choice );
+		} else if ( phase === 'returning' ) {
+			showMessage( copy.expedition.returning );
+		}
+	};
+
+	const advance = ( announce: boolean ): void => {
+		if ( destroyed ) {
+			return;
+		}
+		const previous = state;
+		state = catchUpPet( state, Date.now() );
+		persist();
+		render();
+		if ( announce ) {
+			announceTransition( previous );
+		}
+		schedulePhaseTimer();
+	};
+
+	function schedulePhaseTimer(): void {
+		clearPhaseTimer();
+		if ( destroyed || document.hidden ) {
+			return;
+		}
+		const nextAt = getNextTransitionAt( state );
+		if ( nextAt === null ) {
+			return;
+		}
+		phaseId = setTimeout( () => {
+			phaseId = null;
+			advance( true );
+		}, Math.max( 0, nextAt - Date.now() ) );
+	}
+
 	const onClick = ( event: Event ): void => {
 		const target = event.target;
 		if ( ! ( target instanceof Element ) ) {
@@ -136,27 +214,53 @@ export function mountMioWidget(
 
 		if ( button.dataset.action === 'boop' ) {
 			react( 'boop' );
-			showMessage( copy.greetReaction );
+			audio.play( 'boop', event.isTrusted );
+			if ( state.expedition?.phase === 'choice' ) {
+				showMessage( copy.expedition.choice );
+			} else if ( state.expedition ) {
+				showMessage( copy.expedition.travelBoop );
+			} else if ( state.outings === 0 ) {
+				showMessage( copy.expedition.intro );
+			} else {
+				showMessage( copy.moods[ getMood( state ) ].status );
+			}
 			return;
 		}
 
 		const action = button.dataset.action;
 		if ( isCareAction( action ) ) {
-			state = applyCareAction( state, action, Date.now() );
+			const result = applyCompanionAction( state, action, Date.now() );
+			state = result.state;
 			persist();
 			react( action );
 			render();
-			showMessage( copy.actions[ action ].reaction );
+			audio.play( action, event.isTrusted );
+			switch ( result.event ) {
+				case 'departed':
+					showMessage( copy.expedition.departed );
+					break;
+				case 'trail-light':
+					showMessage( copy.expedition.trailLight );
+					break;
+				case 'trail-explore':
+					showMessage( copy.expedition.trailExplore );
+					break;
+				case 'returning':
+					showMessage( copy.expedition.returning );
+					break;
+				case 'busy':
+					showMessage( copy.expedition.travelBoop );
+					break;
+				case 'care':
+				default:
+					showMessage( copy.actions[ action ].reaction );
+			}
+			schedulePhaseTimer();
 		}
 	};
 
 	const refresh = (): void => {
-		if ( destroyed ) {
-			return;
-		}
-		state = catchUpPet( state, Date.now() );
-		persist();
-		render();
+		advance( false );
 	};
 
 	const startRefresh = (): void => {
@@ -170,22 +274,33 @@ export function mountMioWidget(
 			clearInterval( refreshId );
 			refreshId = null;
 		}
+		clearPhaseTimer();
 	};
 
 	const onVisibilityChange = (): void => {
 		if ( document.hidden ) {
 			stopRefresh();
+			audio.suspend();
 			return;
 		}
-		refresh();
+		advance( true );
 		startRefresh();
+		schedulePhaseTimer();
 	};
 
+	const teardownSoundMenu = bindMioSoundMenu(
+		root,
+		ctx,
+		copy,
+		audio,
+		showMessage,
+	);
 	root.addEventListener( 'click', onClick );
 	document.addEventListener( 'visibilitychange', onVisibilityChange );
 	persist();
 	render();
 	startRefresh();
+	schedulePhaseTimer();
 
 	return () => {
 		if ( destroyed ) {
@@ -194,6 +309,8 @@ export function mountMioWidget(
 		destroyed = true;
 		persist();
 		stopRefresh();
+		teardownSoundMenu();
+		audio.dispose();
 		if ( reactionId !== null ) {
 			clearTimeout( reactionId );
 			reactionId = null;

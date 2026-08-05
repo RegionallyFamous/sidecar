@@ -33,7 +33,8 @@ function openstation_register_mio_widget_assets() {
 	wp_register_script(
 		'os-mio-widget',
 		OPENSTATION_URL . 'assets/js/widget-mio' . $suffix . '.js',
-		// Mio schedules its first auto-pin through `wp.os.whenReady`.
+		// Mio coordinates its first auto-pin through `wp.os.whenReady`
+		// and the client widget-registration action.
 		// Keep the shell ahead of this bundle even when WordPress promotes
 		// the main script to `defer`; otherwise Mio can evaluate while `wp.os`
 		// is still absent and silently miss its only pin attempt.

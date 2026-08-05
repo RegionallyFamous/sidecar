@@ -57,6 +57,28 @@ describe( 'widgets/registry', () => {
 		expect( list.map( ( w ) => w.id ) ).toEqual( [ 'a' ] );
 	} );
 
+	test( 'register announces the completed definition', async () => {
+		const registry = await import( '../../src/widgets/registry' );
+		const log = recordActions( hooks, [ 'os.widget.registered' ] );
+		const def = {
+			id: 'announced',
+			label: 'Announced',
+			description: 'ready',
+			icon: 'dashicons-star-filled',
+			mount: () => () => undefined,
+		};
+
+		registry.register( def );
+
+		expect( registry.get( def.id ) ).toBe( def );
+		expect( log ).toEqual( [
+			{
+				name: 'os.widget.registered',
+				args: [ { id: def.id, def } ],
+			},
+		] );
+	} );
+
 	test( 'register throws RegistrationError on invalid defs', async () => {
 		const registry = await import( '../../src/widgets/registry' );
 		expect( () =>

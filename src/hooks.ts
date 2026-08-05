@@ -1103,6 +1103,8 @@ export const HOOKS = {
 	// ------------------------------------------------------------------
 	/** Filter, receives the widget registry array. */
 	WIDGETS: 'os.widgets',
+	/** Action after a widget definition registers. Payload `{ id, def }`. */
+	WIDGET_REGISTERED: 'os.widget.registered',
 	/** Action before a widget mounts. Payload `{ id, container, ctx }`. */
 	WIDGET_MOUNTING: 'os.widget.mounting',
 	/** Action after a widget mounts successfully. Payload `{ id, container, ctx }`. */

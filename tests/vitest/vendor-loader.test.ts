@@ -13,7 +13,7 @@
  * its native window's `script` — a normal thing to do, and how the
  * WooCommerce Customer window is wired.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { loadVendorScript } from '../../src/wallpapers/vendor-loader';
 
 const BUNDLE = 'http://example.test/wp-content/plugins/x/assets/js/a.min.js';
@@ -31,6 +31,7 @@ describe( 'loadVendorScript — no double injection', () => {
 	} );
 
 	afterEach( () => {
+		vi.restoreAllMocks();
 		document.head.innerHTML = '';
 		document.body.innerHTML = '';
 	} );
@@ -121,5 +122,37 @@ describe( 'loadVendorScript — no double injection', () => {
 		// next time instead of re-walking every script tag.
 		expect( enqueued.dataset.osVendor ).toBe( url );
 		expect( enqueued.dataset.loaded ).toBe( '1' );
+	} );
+
+	test( 'waits for a later deferred tag to execute before resolving', async () => {
+		const url =
+			'http://example.test/wp-content/plugins/x/assets/js/deferred.min.js';
+		const current = document.createElement( 'script' );
+		const enqueued = document.createElement( 'script' );
+		enqueued.defer = true;
+		enqueued.src = `${ url }?ver=0.9.8`;
+		document.head.append( current, enqueued );
+		Object.defineProperty( document, 'currentScript', {
+			configurable: true,
+			value: current,
+		} );
+		Object.defineProperty( document, 'readyState', {
+			configurable: true,
+			value: 'interactive',
+		} );
+		let resolved = false;
+		const loaded = loadVendorScript( url ).then( () => {
+			resolved = true;
+		} );
+
+		await Promise.resolve();
+		expect( resolved ).toBe( false );
+		expect( enqueued.dataset.loaded ).toBeUndefined();
+
+		enqueued.dispatchEvent( new Event( 'load' ) );
+		await loaded;
+		expect( resolved ).toBe( true );
+		expect( enqueued.dataset.loaded ).toBe( '1' );
+		expect( scriptCount( '/deferred.min.js' ) ).toBe( 1 );
 	} );
 } );

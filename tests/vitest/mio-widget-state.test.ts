@@ -1,9 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import {
+	EXPEDITION_DEPART_MS,
+	EXPEDITION_EXPLORE_MS,
+	EXPEDITION_RETURN_MS,
 	MAX_CATCH_UP_MS,
 	applyCareAction,
+	applyCompanionAction,
 	catchUpPet,
 	createPetState,
+	getHomecoming,
 	getMood,
 	restorePetState,
 } from '../../src/plugins/mio-widget/pet';
@@ -58,12 +63,111 @@ describe( 'Mio companion state', () => {
 
 	test( 'recovers from malformed and future-version storage', () => {
 		const malformed = restorePetState(
-			{ version: 1, glow: 'bright' },
+			{ version: 2, glow: 'bright' },
 			NOW,
 		);
-		const future = restorePetState( { version: 2, glow: 1 }, NOW );
+		const future = restorePetState( { version: 3, glow: 1 }, NOW );
 
 		expect( malformed ).toEqual( createPetState( NOW ) );
 		expect( future ).toEqual( createPetState( NOW ) );
+	} );
+
+	test( 'migrates valid version-one care state without losing the relationship', () => {
+		const migrated = restorePetState( {
+			version: 1,
+			metAtMs: NOW - 1_000,
+			updatedAtMs: NOW,
+			glow: 64,
+			ease: 55,
+			wonder: 81,
+			interactions: 9,
+			lastAction: 'quiet',
+		}, NOW );
+
+		expect( migrated ).toMatchObject( {
+			version: 2,
+			glow: 64,
+			ease: 55,
+			wonder: 81,
+			interactions: 9,
+			lastAction: 'quiet',
+			expedition: null,
+			outings: 0,
+		} );
+	} );
+
+	test( 'completes a deterministic bold tiny expedition in about thirty seconds', () => {
+		let state = createPetState( NOW );
+		const departed = applyCompanionAction( state, 'explore', NOW );
+		state = departed.state;
+		expect( departed.event ).toBe( 'departed' );
+		expect( state.expedition ).toMatchObject( {
+			phase: 'departing',
+			depth: 0,
+			trail: [],
+		} );
+
+		state = catchUpPet( state, NOW + EXPEDITION_DEPART_MS );
+		expect( state.expedition?.phase ).toBe( 'choice' );
+
+		state = applyCompanionAction(
+			state,
+			'explore',
+			NOW + EXPEDITION_DEPART_MS,
+		).state;
+		state = catchUpPet(
+			state,
+			NOW + EXPEDITION_DEPART_MS + EXPEDITION_EXPLORE_MS,
+		);
+		expect( state.expedition ).toMatchObject( {
+			phase: 'choice',
+			depth: 2,
+			trail: [ 'explore' ],
+		} );
+
+		const secondChoiceAt =
+			NOW + EXPEDITION_DEPART_MS + EXPEDITION_EXPLORE_MS;
+		state = applyCompanionAction( state, 'explore', secondChoiceAt ).state;
+		state = catchUpPet( state, secondChoiceAt + EXPEDITION_EXPLORE_MS );
+		expect( state.expedition?.phase ).toBe( 'returning' );
+
+		state = catchUpPet(
+			state,
+			secondChoiceAt + EXPEDITION_EXPLORE_MS + EXPEDITION_RETURN_MS,
+		);
+		expect( state.expedition ).toBeNull();
+		expect( state.outings ).toBe( 1 );
+		expect( state.lastHomecoming ).toBe( 'paper-star' );
+	} );
+
+	test( 'makes every expedition ending positive and choice-authored', () => {
+		expect( getHomecoming( [] ) ).toBe( 'warm-hush' );
+		expect( getHomecoming( [ 'starlight', 'starlight' ] ) ).toBe(
+			'warm-hush',
+		);
+		expect( getHomecoming( [ 'starlight', 'explore' ] ) ).toBe( 'odd-song' );
+		expect( getHomecoming( [ 'explore', 'explore' ] ) ).toBe( 'paper-star' );
+	} );
+
+	test( 'lets Quiet bring Mio home early without punishment', () => {
+		let state = applyCompanionAction(
+			createPetState( NOW ),
+			'explore',
+			NOW,
+		).state;
+		state = catchUpPet( state, NOW + EXPEDITION_DEPART_MS );
+		const returning = applyCompanionAction(
+			state,
+			'quiet',
+			NOW + EXPEDITION_DEPART_MS,
+		);
+
+		expect( returning.event ).toBe( 'returning' );
+		expect( returning.state.ease ).toBeGreaterThan( state.ease );
+		state = catchUpPet(
+			returning.state,
+			NOW + EXPEDITION_DEPART_MS + EXPEDITION_RETURN_MS,
+		);
+		expect( state.lastHomecoming ).toBe( 'warm-hush' );
 	} );
 } );

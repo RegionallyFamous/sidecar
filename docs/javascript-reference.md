@@ -3915,6 +3915,7 @@ Equivalent legacy entry point: `wp.os.widgetLayer?.redock( id )`. New code shoul
 | Hook | Kind | Status | Payload |
 |---|---|---|---|
 | `os.widgets` | filter | Stable | the registry array |
+| `os.widget.registered` | action | Stable | `{ id, def }` — after a widget definition enters the client registry |
 | `os.widget.mounting` | action | Stable | `{ id, container, ctx }` — before paint |
 | `os.widget.mounted` | action | Stable | `{ id, container, ctx }` — after paint |
 | `os.widget.unmounting` | action | Stable | `{ id }` — before teardown |

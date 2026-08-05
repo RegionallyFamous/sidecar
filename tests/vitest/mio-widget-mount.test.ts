@@ -171,7 +171,7 @@ describe( 'Mio companion mount', () => {
 		expect( container.querySelector( 'b' ) ).toBeNull();
 		expect( translate ).toHaveBeenCalledWith( 'Mio', 'desktop-mode' );
 		expect( translate ).toHaveBeenCalledWith(
-			'Mio found a story.',
+			'Mio found a tiny door.',
 			'desktop-mode',
 		);
 		expect(
@@ -225,7 +225,9 @@ describe( 'Mio companion mount', () => {
 		container.querySelector< HTMLButtonElement >(
 			'[data-action="boop"]',
 		)!.click();
-		expect( status.textContent ).toBe( 'Mio drifts closer.' );
+		expect( status.textContent ).toBe(
+			'Explore starts a tiny trip. Light guides; Quiet calls Mio home.',
+		);
 		expect( root.dataset.messageVisible ).toBe( 'true' );
 
 		vi.advanceTimersByTime( 2000 );
@@ -280,12 +282,57 @@ describe( 'Mio companion mount', () => {
 
 		expect( Array.from( storage.values.keys() ) ).toEqual( [ 'pet-state' ] );
 		expect( storage.values.get( 'pet-state' ) ).toMatchObject( {
-			wonder: 96,
+			wonder: 77,
 			interactions: 1,
+			expedition: { phase: 'departing' },
 		} );
 		expect(
 			container.querySelector( '[role="status"]' )?.textContent,
-		).toBe( 'Mio found a story.' );
+		).toBe( 'Mio found a tiny door.' );
+
+		teardown();
+	} );
+
+	test( 'guides a choice-authored tiny expedition without adding UI', () => {
+		const container = document.querySelector< HTMLElement >( '#widget' )!;
+		const teardown = mountMioWidget( container, createContext() );
+		const status = container.querySelector< HTMLElement >( '[role="status"]' )!;
+		const controls = Array.from(
+			container.querySelectorAll< HTMLButtonElement >(
+				'.mio-companion__control',
+			),
+		);
+
+		container.querySelector< HTMLButtonElement >(
+			'[data-action="explore"]',
+		)!.click();
+		expect( status.textContent ).toBe( 'Mio found a tiny door.' );
+		expect( controls.every( ( button ) => button.disabled ) ).toBe( true );
+
+		vi.advanceTimersByTime( 6_000 );
+		expect( status.textContent ).toBe(
+			'A fork: Light, Explore, or Quiet?',
+		);
+		expect( controls.every( ( button ) => ! button.disabled ) ).toBe( true );
+
+		container.querySelector< HTMLButtonElement >(
+			'[data-action="explore"]',
+		)!.click();
+		expect( status.textContent ).toBe( 'Mio slips past the bright edge.' );
+		vi.advanceTimersByTime( 10_000 );
+		expect( status.textContent ).toBe(
+			'A fork: Light, Explore, or Quiet?',
+		);
+
+		container.querySelector< HTMLButtonElement >(
+			'[data-action="explore"]',
+		)!.click();
+		vi.advanceTimersByTime( 10_000 );
+		expect( status.textContent ).toBe( 'Mio is finding the way home.' );
+		vi.advanceTimersByTime( 6_000 );
+		expect( status.textContent ).toBe( 'Mio brought back a paper star.' );
+		expect( controls.every( ( button ) => ! button.disabled ) ).toBe( true );
+		expect( container.querySelectorAll( 'button' ) ).toHaveLength( 4 );
 
 		teardown();
 	} );

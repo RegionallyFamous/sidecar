@@ -173,13 +173,29 @@ export function loadVendorScript(
 		// the identity of the bundle.
 		const alreadyInDocument = findScriptByPath( url );
 		if ( alreadyInDocument ) {
-			// Resolved rather than awaited. A tag the document
-			// printed for itself is the document's own ordering
-			// problem; ours is only to not print it twice. Waiting on
-			// a `load` that already fired would hang the sync
-			// forever, and the caller tolerates an absent render
-			// callback.
 			alreadyInDocument.dataset.osVendor = url;
+			// Deferred scripts execute in document order after parsing. When
+			// the active shell script adopts a later deferred plugin tag, that
+			// tag exists in the DOM but its body has not run yet. Wait for its
+			// load event so registry sync cannot read the plugin global early.
+			// Older/earlier/static tags still resolve immediately: waiting on a
+			// load event that already fired would hang forever.
+			if ( isFollowingDeferredScript( alreadyInDocument ) ) {
+				alreadyInDocument.addEventListener(
+					'load',
+					() => {
+						alreadyInDocument.dataset.loaded = '1';
+						resolve();
+					},
+					{ once: true },
+				);
+				alreadyInDocument.addEventListener(
+					'error',
+					() => reject( new Error( `Failed to load ${ url }` ) ),
+					{ once: true },
+				);
+				return;
+			}
 			alreadyInDocument.dataset.loaded = '1';
 			resolve();
 			return;
@@ -235,6 +251,22 @@ export function loadVendorScript(
 
 	pending.set( url, promise );
 	return promise;
+}
+
+/** Whether `tag` is a deferred script that has not executed after this one. */
+function isFollowingDeferredScript( tag: HTMLScriptElement ): boolean {
+	const current = document.currentScript;
+	if (
+		document.readyState === 'complete' ||
+		! tag.defer ||
+		! ( current instanceof HTMLScriptElement )
+	) {
+		return false;
+	}
+	const position = current.compareDocumentPosition( tag );
+	// DOM position flags are a platform bitmask by contract.
+	// eslint-disable-next-line no-bitwise
+	return ( position & Node.DOCUMENT_POSITION_FOLLOWING ) !== 0;
 }
 
 /**
