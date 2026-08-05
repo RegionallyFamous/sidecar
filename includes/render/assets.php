@@ -329,9 +329,16 @@ function openstation_enqueue_assets() {
 		$ver  = file_exists( $path )
 			? (string) filemtime( $path )
 			: OPENSTATION_VERSION;
-		return esc_url_raw(
-			OPENSTATION_URL . 'assets/js/' . $base . $suffix . '.js?ver=' . $ver
-		);
+		$url = OPENSTATION_URL . 'assets/js/' . $base . $suffix . '.js?ver=' . $ver;
+
+		// These bundles are injected by the shell rather than printed by
+		// `WP_Scripts`, so mirror its final URL filter explicitly. Playground
+		// depends on this hook to attach the active per-tab `/scope:.../`
+		// prefix; without it, the main bundle loads but both lazy bundles 404.
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- applying WordPress core's print-time URL filter.
+		$url = apply_filters( 'script_loader_src', $url, 'openstation-' . $base );
+
+		return is_string( $url ) ? esc_url_raw( $url ) : '';
 	};
 
 	// Build the current page URL from $pagenow + $_GET. Strip the portal

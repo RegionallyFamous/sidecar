@@ -96,6 +96,25 @@ class Tests_OpenStation_NativeWindowStyle extends WP_UnitTestCase {
 		$this->assertStringStartsWith( site_url(), $payload['url'] );
 	}
 
+	/**
+	 * @covers ::openstation_resolve_style_payload
+	 */
+	public function test_resolve_style_payload_applies_print_time_url_filter() {
+		$this->register_demo_style();
+		$filter = static function ( $src, $handle ) {
+			if ( 'jorvy-style' !== $handle ) {
+				return $src;
+			}
+			return add_query_arg( 'runtime_scope', 'playground', $src );
+		};
+		add_filter( 'style_loader_src', $filter, 10, 2 );
+
+		$payload = openstation_resolve_style_payload( 'jorvy-style' );
+
+		remove_filter( 'style_loader_src', $filter, 10 );
+		$this->assertStringContainsString( 'runtime_scope=playground', $payload['url'] );
+	}
+
 	// --------------------------------------------------------------
 	// Payload integration
 	// --------------------------------------------------------------

@@ -33,9 +33,16 @@ function openstation_register_mio_widget_assets() {
 	wp_register_script(
 		'os-mio-widget',
 		OPENSTATION_URL . 'assets/js/widget-mio' . $suffix . '.js',
-		array( 'wp-i18n' ),
+		// Mio schedules its first auto-pin through `wp.os.whenReady`.
+		// Keep the shell ahead of this bundle even when WordPress promotes
+		// the main script to `defer`; otherwise Mio can evaluate while `wp.os`
+		// is still absent and silently miss its only pin attempt.
+		array( 'openstation', 'wp-i18n' ),
 		file_exists( $js_path ) ? (string) filemtime( $js_path ) : $version,
-		true
+		array(
+			'in_footer' => true,
+			'strategy'  => 'defer',
+		)
 	);
 	wp_set_script_translations(
 		'os-mio-widget',

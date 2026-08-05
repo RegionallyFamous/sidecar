@@ -1400,6 +1400,15 @@ function openstation_resolve_script_payload( $handle ) {
 		$resolved = add_query_arg( 'ver', $registered->ver, $resolved );
 	}
 
+	// Match the final URL WordPress would print for this handle. Hosts such
+	// as WordPress Playground use `script_loader_src` to add a per-tab scope
+	// to asset URLs. Skipping that filter leaves the shell's lazy loader with
+	// an unscoped URL even though the statically printed script loaded from the
+	// scoped URL, producing a second wave of 404s for every registry bundle.
+	// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- applying WordPress core's print-time URL filter.
+	$resolved = apply_filters( 'script_loader_src', $resolved, $handle );
+	$resolved = is_string( $resolved ) ? esc_url_raw( $resolved ) : '';
+
 	// Harvest `extra` data the lazy-load path would otherwise drop.
 	$before = array();
 	$after  = array();
@@ -1502,6 +1511,13 @@ function openstation_resolve_style_payload( $handle ) {
 	if ( ! empty( $registered->ver ) ) {
 		$resolved = add_query_arg( 'ver', $registered->ver, $resolved );
 	}
+
+	// Keep lazy stylesheet URLs aligned with `WP_Styles::do_item()`. In
+	// scoped runtimes (notably WordPress Playground), the print-time filter
+	// is what maps a root asset URL onto the active browser-tab scope.
+	// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- applying WordPress core's print-time URL filter.
+	$resolved = apply_filters( 'style_loader_src', $resolved, $handle );
+	$resolved = is_string( $resolved ) ? esc_url_raw( $resolved ) : '';
 
 	// `wp_add_inline_style()` blobs land in `extra['after']` — capture
 	// them so the shell can emit a `<style>` tag after the `<link>` to

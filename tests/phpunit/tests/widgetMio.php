@@ -54,6 +54,7 @@ class Tests_OpenStation_WidgetMio extends WP_UnitTestCase {
 			'assets/js/widget-mio' . $suffix . '.css',
 			$style->src
 		);
+		$this->assertContains( 'openstation', $script->deps );
 		$this->assertContains( 'wp-i18n', $script->deps );
 		$this->assertTrue( (bool) $script->extra['group'], 'script loads in the footer' );
 	}
