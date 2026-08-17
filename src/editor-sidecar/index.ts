@@ -1,23 +1,19 @@
 /**
  * OpenStation — Gutenberg Sidebar Window.
  *
- * Gutenberg's complementary area (Post, Block, and plugin-owned
- * sidebars such as Yoast / Rank Math / ACF) belongs to the editor's
- * React tree. Moving it into a second document would sever React's
- * event delegation; opening a second editor would create competing
- * dirty state and autosaves. Sidebar Window therefore stays inside the
- * ONE real editor iframe and asks its iframe-side bridge to frame the
- * existing complementary area as a persistent, resizable attached window.
+ * The editor and its sidebar are presented as two real OpenStation
+ * windows. The source editor snaps to the left and a transient,
+ * iframe-backed companion opens on the right with the same post URL.
+ * The companion's iframe is reduced to Gutenberg's complementary area,
+ * so Post, Block, and plugin-owned sidebars get normal Gutenberg runtime
+ * behavior while living outside the source window's bounds.
  *
- * The shell owns only policy and lifecycle:
- *  - a title-bar button appears after Gutenberg has actually booted;
- *  - activating it sends `os-editor-sidecar-set` to that iframe;
- *  - narrow floating/snapped editors maximize once to make useful room;
- *  - active editor ids persist so session-restored windows re-apply the
- *    attached window after their iframe announces readiness.
- *
- * The iframe-side DOM/CSS work lives in
- * `installEditorSidecarHandler()` and `assets/css/chromeless.css`.
+ * A separate editor document is the unavoidable boundary for a truly
+ * independent shell window: an iframe cannot paint outside its own box,
+ * and adopting plugin-owned React DOM into the shell would sever React
+ * context and delegated events. The source's complementary area is
+ * therefore parked while the companion is open, and the companion is
+ * ephemeral so only the source participates in session restore.
  */
 
 import { addAction, HOOKS } from '../hooks';
@@ -25,27 +21,76 @@ import { __ } from '../i18n';
 import { createSharedStore } from '../shared-store';
 import { registerTitleBarButton } from '../title-bar-buttons/registry';
 
-/** Persisted per-post window ids; capped defensively on write. */
 const ACTIVE_STORAGE_KEY = 'openstation.editorSidecar.activeWindows';
 const MAX_PERSISTED_IDS = 64;
 const GUTENBERG_PROBE_INTERVAL_MS = 250;
 const GUTENBERG_PROBE_ATTEMPTS = 40;
+const COMPANION_SUFFIX = '--sidebar-window';
+const COMPANION_QUERY_KEY = 'openstation_sidebar_window';
+
+type WindowState =
+	| 'normal'
+	| 'minimized'
+	| 'maximized'
+	| 'fullscreen'
+	| 'snapped-left'
+	| 'snapped-right';
 
 interface EditorSidecarWindowLike {
 	id: string;
-	config: { native?: boolean };
+	config: {
+		native?: boolean;
+		url?: string;
+		desktopId?: string;
+	};
 	iframe?: HTMLIFrameElement | null;
 	element?: HTMLElement;
+	state?: WindowState;
+	_savedGeometry?: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	} | null;
+	applySnap?: ( zone: 'left' | 'right' ) => void;
 	maximize?: () => void;
+	toggleMaximize?: () => void;
+	close?: () => void;
+	destroy?: () => void;
+	getCurrentUrl?: () => string;
 	renderCustomTitleBarButtons?: () => void;
+}
+
+interface CompanionWindowConfig {
+	id: string;
+	baseId: string;
+	url: string;
+	title: string;
+	icon: string;
+	width: number;
+	height: number;
+	minWidth: number;
+	minHeight: number;
+	initialState: 'snapped-right';
+	ephemeral: true;
+	multi: false;
+	ownerHandle: string;
+	desktopId?: string;
+	onClose: () => void;
 }
 
 interface EditorSidecarManager {
 	getById: ( id: string ) => EditorSidecarWindowLike | null | undefined;
+	open: ( config: CompanionWindowConfig ) => Promise< EditorSidecarWindowLike >;
+}
+
+interface GutenbergSelectors {
+	getActiveComplementaryArea?: ( scope: string ) => string | null;
+	getActiveGeneralSidebarName?: () => string | null;
 }
 
 interface GutenbergDataApi {
-	select?: ( store: string ) => Record< string, unknown > | undefined;
+	select?: ( store: string ) => GutenbergSelectors | undefined;
 }
 
 interface GutenbergFrameWindow {
@@ -55,6 +100,10 @@ interface GutenbergFrameWindow {
 
 interface EditorSidecarState {
 	activeEditors: Set< string >;
+}
+
+interface SourceLayout {
+	state: WindowState;
 }
 
 function readPersistedEditors(): Set< string > {
@@ -90,112 +139,284 @@ function persistEditors(): void {
 	}
 }
 
-/**
- * Gutenberg capability probe against the same-origin child realm.
- * Looking for BOTH the editor store and a complementary-area store
- * avoids painting the button on Classic Editor and on non-editor admin
- * pages that happen to enqueue one of the packages.
- */
-function isGutenbergEditor( win: EditorSidecarWindowLike ): boolean {
-	if ( win.config.native || ! win.iframe?.contentWindow ) {
-		return false;
+function companionId( sourceId: string ): string {
+	return `${ sourceId }${ COMPANION_SUFFIX }`;
+}
+
+function sourceIdFromCompanion( id: string ): string | null {
+	return id.endsWith( COMPANION_SUFFIX )
+		? id.slice( 0, -COMPANION_SUFFIX.length )
+		: null;
+}
+
+function isCompanionWindow( win: EditorSidecarWindowLike ): boolean {
+	if ( sourceIdFromCompanion( win.id ) ) {
+		return true;
 	}
 	try {
-		const frame = win.iframe.contentWindow as GutenbergFrameWindow;
-		const select = frame.wp?.data?.select;
-		if ( typeof select !== 'function' ) {
-			return false;
-		}
-		const editor = select( 'core/editor' );
-		const modernInterface = select( 'core/interface' );
-		const legacyInterface = select( 'core/edit-post' );
-		return !! (
-			editor &&
-			( modernInterface || legacyInterface ) &&
-			frame.document.querySelector( '.interface-interface-skeleton' )
+		const current = win.getCurrentUrl?.() || win.config.url || '';
+		return (
+			new URL( current, window.location.origin ).searchParams.get(
+				COMPANION_QUERY_KEY,
+			) === '1'
 		);
 	} catch {
-		// Cross-origin/navigation race. The next `os-ready` repaints.
 		return false;
 	}
 }
 
-function postSidecarState(
+function frameWindow(
 	win: EditorSidecarWindowLike,
-	active: boolean,
+): GutenbergFrameWindow | null {
+	if ( win.config.native || ! win.iframe?.contentWindow ) {
+		return null;
+	}
+	return win.iframe.contentWindow as GutenbergFrameWindow;
+}
+
+function isGutenbergEditor( win: EditorSidecarWindowLike ): boolean {
+	try {
+		const frame = frameWindow( win );
+		const select = frame?.wp?.data?.select;
+		if ( ! frame || typeof select !== 'function' ) {
+			return false;
+		}
+		return !! (
+			select( 'core/editor' ) &&
+			( select( 'core/interface' ) || select( 'core/edit-post' ) ) &&
+			frame.document.querySelector( '.interface-interface-skeleton' )
+		);
+	} catch {
+		return false;
+	}
+}
+
+function activeArea( win: EditorSidecarWindowLike ): string | null {
+	try {
+		const select = frameWindow( win )?.wp?.data?.select;
+		if ( typeof select !== 'function' ) {
+			return null;
+		}
+		const modern = select( 'core/interface' );
+		if ( typeof modern?.getActiveComplementaryArea === 'function' ) {
+			return modern.getActiveComplementaryArea( 'core' ) ?? null;
+		}
+		const legacy = select( 'core/edit-post' );
+		if ( typeof legacy?.getActiveGeneralSidebarName === 'function' ) {
+			return legacy.getActiveGeneralSidebarName() ?? null;
+		}
+	} catch {
+		/* Navigation race — the companion will fall back to Post settings. */
+	}
+	return null;
+}
+
+function postMessageTo(
+	win: EditorSidecarWindowLike,
+	data: Record< string, unknown >,
 ): boolean {
 	const target = win.iframe?.contentWindow;
 	if ( ! target ) {
 		return false;
 	}
 	try {
-		target.postMessage(
-			{ type: 'os-editor-sidecar-set', active },
-			window.location.origin,
-		);
+		target.postMessage( data, window.location.origin );
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-/** Give the editor and attached Sidebar Window enough useful width. */
-function makeRoomForSidecar( win: EditorSidecarWindowLike ): void {
-	const element = win.element;
-	if ( ! element || typeof win.maximize !== 'function' ) {
+function parkSource( win: EditorSidecarWindowLike, parked: boolean ): boolean {
+	return postMessageTo( win, {
+		type: 'os-editor-sidecar-source',
+		parked,
+	} );
+}
+
+function activateCompanion(
+	win: EditorSidecarWindowLike,
+	area: string | null,
+): boolean {
+	return postMessageTo( win, {
+		type: 'os-editor-sidecar-set',
+		active: true,
+		detached: true,
+		area,
+	} );
+}
+
+function companionUrl( source: EditorSidecarWindowLike ): string {
+	const current = source.getCurrentUrl?.() || source.config.url || '';
+	const url = new URL( current, window.location.origin );
+	url.searchParams.set( COMPANION_QUERY_KEY, '1' );
+	return url.toString();
+}
+
+function arrangeSource(
+	source: EditorSidecarWindowLike,
+	layouts: Map< string, SourceLayout >,
+): void {
+	if ( ! source.applySnap || source.state === 'fullscreen' ) {
 		return;
 	}
-	const desktopWidth = element.parentElement?.clientWidth ?? window.innerWidth;
-	const currentWidth = element.getBoundingClientRect().width;
-	if ( desktopWidth >= 960 && currentWidth > 0 && currentWidth < 900 ) {
-		win.maximize();
+	const state = source.state ?? 'normal';
+	if ( ! layouts.has( source.id ) ) {
+		layouts.set( source.id, { state } );
 	}
+	if ( state === 'normal' && ! source._savedGeometry && source.element ) {
+		source._savedGeometry = {
+			x: source.element.offsetLeft,
+			y: source.element.offsetTop,
+			width: source.element.offsetWidth,
+			height: source.element.offsetHeight,
+		};
+	}
+	source.applySnap( 'left' );
 }
 
-function setActive(
-	win: EditorSidecarWindowLike,
-	active: boolean,
-	makeRoom: boolean,
+function restoreSourceLayout(
+	source: EditorSidecarWindowLike,
+	layouts: Map< string, SourceLayout >,
 ): void {
-	if ( active ) {
-		store.state.activeEditors.add( win.id );
-		if ( makeRoom ) {
-			makeRoomForSidecar( win );
-		}
-	} else {
-		store.state.activeEditors.delete( win.id );
+	const saved = layouts.get( source.id );
+	layouts.delete( source.id );
+	if ( ! saved || source.state !== 'snapped-left' ) {
+		return;
 	}
-	persistEditors();
-	postSidecarState( win, active );
-	win.renderCustomTitleBarButtons?.();
+	if ( saved.state === 'snapped-left' ) {
+		return;
+	}
+	if ( saved.state === 'snapped-right' ) {
+		source.applySnap?.( 'right' );
+		return;
+	}
+	if ( saved.state === 'maximized' ) {
+		source.maximize?.();
+		return;
+	}
+	if ( saved.state === 'normal' && source.toggleMaximize ) {
+		source.toggleMaximize();
+		source.toggleMaximize();
+	}
 }
 
-function windowForMessageSource(
-	manager: EditorSidecarManager,
-	source: MessageEventSource | null,
-): EditorSidecarWindowLike | null {
-	if ( ! source ) {
-		return null;
-	}
-	for ( const id of store.state.activeEditors ) {
-		const win = manager.getById( id );
-		if ( win?.iframe?.contentWindow === source ) {
-			return win;
-		}
-	}
-	return null;
-}
-
-/**
- * Register the title-bar affordance and keep it synchronized across
- * iframe reloads, Gutenberg's own close button, and session restore.
- */
 export function bootEditorSidecar( {
 	manager,
 }: {
 	manager: EditorSidecarManager;
 } ): void {
 	const readinessProbes = new Map< string, number >();
+	const openingSources = new Set< string >();
+	const areaBySource = new Map< string, string | null >();
+	const sourceLayouts = new Map< string, SourceLayout >();
+
+	const deactivate = ( sourceId: string ): void => {
+		const wasActive = store.state.activeEditors.delete( sourceId );
+		if ( wasActive ) {
+			persistEditors();
+		}
+		areaBySource.delete( sourceId );
+		const source = manager.getById( sourceId );
+		if ( source ) {
+			parkSource( source, false );
+			restoreSourceLayout( source, sourceLayouts );
+			source.renderCustomTitleBarButtons?.();
+		} else {
+			sourceLayouts.delete( sourceId );
+		}
+	};
+
+	const requestCompanionClose = ( sourceId: string ): void => {
+		const companion = manager.getById( companionId( sourceId ) );
+		if ( companion?.close ) {
+			// Keep the source parked and the toggle active until Window.close()
+			// clears its before-unload guard and invokes the companion onClose.
+			companion.close();
+			return;
+		}
+		// The companion may still be inside manager.open(). Mark the desired
+		// state inactive; the resolving open path destroys the stale result.
+		deactivate( sourceId );
+	};
+
+	const openCompanion = async (
+		source: EditorSidecarWindowLike,
+		makeRoom: boolean,
+	): Promise< void > => {
+		if ( openingSources.has( source.id ) ) {
+			areaBySource.set( source.id, activeArea( source ) );
+			store.state.activeEditors.add( source.id );
+			persistEditors();
+			parkSource( source, true );
+			if ( makeRoom ) {
+				arrangeSource( source, sourceLayouts );
+			}
+			source.renderCustomTitleBarButtons?.();
+			return;
+		}
+		openingSources.add( source.id );
+		const area = activeArea( source );
+		areaBySource.set( source.id, area );
+		store.state.activeEditors.add( source.id );
+		persistEditors();
+		parkSource( source, true );
+		if ( makeRoom ) {
+			arrangeSource( source, sourceLayouts );
+		}
+		source.renderCustomTitleBarButtons?.();
+
+		const id = companionId( source.id );
+		try {
+			const companion = await manager.open( {
+				id,
+				baseId: id,
+				url: companionUrl( source ),
+				title: __( 'Sidebar Window' ),
+				icon: 'dashicons-columns',
+				width: 420,
+				height: 720,
+				minWidth: 280,
+				minHeight: 320,
+				initialState: 'snapped-right',
+				ephemeral: true,
+				multi: false,
+				ownerHandle: 'desktop-mode/editor-sidecar',
+				desktopId: source.config.desktopId,
+				onClose: () => {
+					deactivate( source.id );
+				},
+			} );
+			if ( ! store.state.activeEditors.has( source.id ) ) {
+				if ( companion.destroy ) {
+					companion.destroy();
+				} else {
+					companion.close?.();
+				}
+			}
+		} catch {
+			deactivate( source.id );
+		} finally {
+			openingSources.delete( source.id );
+		}
+	};
+
+	const handleReadyWindow = ( win: EditorSidecarWindowLike ): void => {
+		const sourceId = sourceIdFromCompanion( win.id );
+		if ( sourceId ) {
+			if ( ! store.state.activeEditors.has( sourceId ) ) {
+				win.close?.();
+				return;
+			}
+			activateCompanion( win, areaBySource.get( sourceId ) ?? null );
+			return;
+		}
+		if ( store.state.activeEditors.has( win.id ) ) {
+			void openCompanion( win, false );
+			return;
+		}
+		win.renderCustomTitleBarButtons?.();
+	};
 
 	const probeGutenbergReadiness = (
 		windowId: string,
@@ -208,14 +429,17 @@ export function bootEditorSidecar( {
 		}
 		if ( isGutenbergEditor( win ) ) {
 			readinessProbes.delete( windowId );
-			if ( store.state.activeEditors.has( win.id ) ) {
-				postSidecarState( win, true );
-			}
-			win.renderCustomTitleBarButtons?.();
+			handleReadyWindow( win );
 			return;
 		}
 		if ( attempt >= GUTENBERG_PROBE_ATTEMPTS ) {
 			readinessProbes.delete( windowId );
+			const sourceId = sourceIdFromCompanion( windowId );
+			if ( sourceId ) {
+				requestCompanionClose( sourceId );
+			} else if ( store.state.activeEditors.has( windowId ) ) {
+				deactivate( windowId );
+			}
 			return;
 		}
 		const timer = window.setTimeout( () => {
@@ -230,20 +454,22 @@ export function bootEditorSidecar( {
 		label: __( 'Sidebar Window' ),
 		icon: 'dashicons-columns',
 		placement: 'right',
-		order: 54, // Immediately before Preview (55) and Related (60).
-		match: ( win ) => isGutenbergEditor( win ),
+		order: 54,
+		match: ( win ) => ! isCompanionWindow( win ) && isGutenbergEditor( win ),
 		render: ( host, win ) => {
 			const active = store.state.activeEditors.has( win.id );
 			host.setAttribute( 'aria-pressed', String( active ) );
 			host.addEventListener( 'click', ( event: Event ) => {
 				event.stopPropagation();
-				setActive( win, ! store.state.activeEditors.has( win.id ), true );
+				if ( store.state.activeEditors.has( win.id ) ) {
+					requestCompanionClose( win.id );
+				} else {
+					void openCompanion( win, true );
+				}
 			} );
 		},
 	} );
 
-	// A restored or navigated iframe gets a fresh document. Re-apply the
-	// persisted attached window only after its bridge says every listener is wired.
 	addAction(
 		HOOKS.IFRAME_READY,
 		'desktop-mode/editor-sidecar',
@@ -260,16 +486,12 @@ export function bootEditorSidecar( {
 				window.clearTimeout( existingProbe );
 				readinessProbes.delete( win.id );
 			}
-			// The standalone bridge can announce readiness before Gutenberg's
-			// React tree and data stores mount. Repaint immediately to remove
-			// stale controls after navigation, then probe until the editor is
-			// actually capable of hosting the sidecar.
-			win.renderCustomTitleBarButtons?.();
 			if ( isGutenbergEditor( win ) ) {
-				if ( store.state.activeEditors.has( win.id ) ) {
-					postSidecarState( win, true );
-				}
+				handleReadyWindow( win );
 				return;
+			}
+			if ( ! isCompanionWindow( win ) ) {
+				win.renderCustomTitleBarButtons?.();
 			}
 			const timer = window.setTimeout( () => {
 				readinessProbes.delete( win.id );
@@ -279,9 +501,35 @@ export function bootEditorSidecar( {
 		},
 	);
 
-	// The iframe owns Gutenberg's close button. If the user closes the
-	// complementary area there, its handler reports `active: false` so
-	// the shell button and persisted preference follow the real UI.
+	addAction(
+		HOOKS.WINDOW_CLOSED,
+		'desktop-mode/editor-sidecar-window-closed',
+		( event: { windowId?: string } ) => {
+			if ( ! event?.windowId ) {
+				return;
+			}
+			const sourceId = sourceIdFromCompanion( event.windowId );
+			if ( sourceId ) {
+				if ( store.state.activeEditors.has( sourceId ) ) {
+					deactivate( sourceId );
+				}
+				return;
+			}
+			if ( store.state.activeEditors.has( event.windowId ) ) {
+				const id = companionId( event.windowId );
+				const companion = manager.getById( id );
+				if ( companion ) {
+					if ( companion.destroy ) {
+						companion.destroy();
+					} else {
+						companion.close?.();
+					}
+				}
+				deactivate( event.windowId );
+			}
+		},
+	);
+
 	window.addEventListener( 'message', ( event: MessageEvent ) => {
 		if ( event.origin !== window.location.origin ) {
 			return;
@@ -296,14 +544,15 @@ export function bootEditorSidecar( {
 		) {
 			return;
 		}
-		const win = windowForMessageSource( manager, event.source );
-		if ( ! win ) {
-			return;
-		}
-		if ( ! data.active || data.available === false ) {
-			store.state.activeEditors.delete( win.id );
-			persistEditors();
-			win.renderCustomTitleBarButtons?.();
+		for ( const sourceId of store.state.activeEditors ) {
+			const companion = manager.getById( companionId( sourceId ) );
+			if ( companion?.iframe?.contentWindow !== event.source ) {
+				continue;
+			}
+			if ( ! data.active || data.available === false ) {
+				requestCompanionClose( sourceId );
+			}
+			break;
 		}
 	} );
 }

@@ -425,157 +425,90 @@ html.wp-toolbar:has( body.os-chromeless ) {
 /* ---------------------------------------------------------------
  * Gutenberg Sidebar Window
  *
- * The title-bar Sidebar Window button adds `os-editor-sidecar-active` from
- * the iframe bridge. Gutenberg keeps rendering its ONE real
- * complementary-area React tree; these rules frame that area as a
- * stable, resizable attached window. This is intentionally active below
- * Gutenberg's 782px desktop breakpoint too — an OpenStation window is
- * often narrower than the browser even when the desktop itself has
- * plenty of room, and Gutenberg would otherwise turn the sidebar into
- * a full-editor overlay.
- *
- * Inline widths on `.interface-complementary-area__fill > div` come
- * from Gutenberg's motion component (`100vw` at its mobile
- * breakpoint), so every level of the fill chain is forced to the
- * bordered frame's inner width. The bridge clamps
- * `--os-editor-sidecar-width` against the live iframe viewport before
- * writing the frame's border-box width.
+ * `os-editor-sidecar-detached` belongs only to the iframe inside the
+ * real, shell-managed Sidebar Window. Hide the duplicate editor canvas
+ * and header, then let Gutenberg's complementary area occupy the whole
+ * window body. The sidebar remains in its own normal Gutenberg/React
+ * document; OpenStation's outer window supplies the title bar, border,
+ * drag surface, resize handles, and close control.
  * --------------------------------------------------------------- */
 .os-chromeless.os-editor-sidecar-active
 	.interface-interface-skeleton__body {
 	overflow: hidden;
-	background: var( --os-ui-bg, #f0f0f1 );
+	background: var( --os-ui-surface, #fff );
 }
 
-.os-chromeless.os-editor-sidecar-active
-	.interface-interface-skeleton__content {
-	min-width: 0;
-	z-index: auto;
+.os-chromeless.os-editor-sidecar-detached
+	.interface-interface-skeleton__header,
+.os-chromeless.os-editor-sidecar-detached
+	.interface-interface-skeleton__content,
+.os-chromeless.os-editor-sidecar-detached
+	.interface-interface-skeleton__footer,
+.os-chromeless.os-editor-sidecar-detached
+	.interface-interface-skeleton__secondary-sidebar,
+.os-chromeless.os-editor-sidecar-detached
+	.interface-interface-skeleton__actions {
+	display: none !important;
 }
 
-.os-chromeless.os-editor-sidecar-active
+.os-chromeless.os-editor-sidecar-detached
+	.interface-interface-skeleton__body {
+	display: block !important;
+	position: absolute !important;
+	inset: 0 !important;
+	width: 100% !important;
+	height: 100% !important;
+}
+
+.os-chromeless.os-editor-sidecar-detached
 	.interface-interface-skeleton__sidebar {
-	position: relative !important;
-	inset: auto !important;
+	position: absolute !important;
+	inset: 0 !important;
 	display: flex !important;
-	align-self: stretch;
 	flex-direction: column;
-	flex: 0 0 var( --os-editor-sidecar-width, 320px ) !important;
-	width: var( --os-editor-sidecar-width, 320px ) !important;
-	min-width: var( --os-editor-sidecar-width, 320px ) !important;
-	max-width: var( --os-editor-sidecar-width, 320px ) !important;
-	height: auto !important;
+	width: 100% !important;
+	min-width: 100% !important;
+	max-width: 100% !important;
+	height: 100% !important;
 	min-height: 0;
-	margin-block: 10px;
-	margin-inline: 12px 10px;
+	margin: 0 !important;
 	box-sizing: border-box;
 	overflow: hidden;
-	border: 1px solid var( --os-ui-border, #c3c4c7 );
-	border-radius: 8px;
+	border: 0 !important;
+	border-radius: 0 !important;
 	background: var( --os-ui-surface, #fff );
-	box-shadow:
-		0 1px 2px rgba( 0, 0, 0, 0.08 ),
-		0 8px 24px rgba( 0, 0, 0, 0.12 );
+	box-shadow: none !important;
 	z-index: 25;
 }
 
-.os-chromeless.os-editor-sidecar-active
+.os-chromeless.os-editor-sidecar-detached
 	.interface-interface-skeleton__sidebar
 	.interface-complementary-area__fill,
-.os-chromeless.os-editor-sidecar-active
+.os-chromeless.os-editor-sidecar-detached
 	.interface-interface-skeleton__sidebar
 	.interface-complementary-area__fill
 	> div,
-.os-chromeless.os-editor-sidecar-active
+.os-chromeless.os-editor-sidecar-detached
 	.interface-interface-skeleton__sidebar
 	.interface-complementary-area {
 	width: 100% !important;
 	min-width: 100% !important;
 	max-width: 100% !important;
+	height: 100% !important;
 	min-height: 0;
 }
 
-.os-chromeless.os-editor-sidecar-active
+.os-chromeless.os-editor-sidecar-detached
 	.interface-interface-skeleton__sidebar
 	.interface-complementary-area__fill {
 	flex: 1 1 auto;
-	height: auto !important;
+	height: 100% !important;
 	overflow: hidden;
 }
 
-/* A small, deliberately OS-like strip makes it unambiguous that the
- * complementary area is an attached companion window rather than a
- * mode change inside the post canvas. The bridge injects this as the
- * sidebar's first child and removes it when Sidebar Window is switched off. */
-.os-chromeless .os-editor-sidecar-window-chrome {
-	display: flex;
-	align-items: center;
-	flex: 0 0 32px;
-	gap: 8px;
-	width: 100%;
-	height: 32px;
-	min-height: 32px;
-	padding-block: 0;
-	padding-inline: 10px 4px;
-	box-sizing: border-box;
-	border-bottom: 1px solid var( --os-ui-border, #dcdcde );
-	background: var( --os-ui-surface-subtle, #f6f7f7 );
-	color: var( --os-ui-fg, #1d2327 );
-	user-select: none;
-}
-
-.os-chromeless .os-editor-sidecar-window-title {
-	min-width: 0;
-	margin: 0;
-	flex: 1 1 auto;
-	overflow: hidden;
-	font-size: 12px;
-	font-weight: 600;
-	line-height: 1;
-	text-align: start;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.os-chromeless .os-editor-sidecar-window-close {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: 0 0 24px;
-	width: 24px;
-	height: 24px;
-	margin: 0;
-	padding: 0;
-	border: 0;
-	border-radius: 4px;
-	background: transparent;
-	color: var( --os-ui-fg-muted, #50575e );
-	font: inherit;
-	font-size: 18px;
-	line-height: 1;
-	cursor: pointer;
-	appearance: none;
-}
-
-.os-chromeless .os-editor-sidecar-window-close:hover {
-	background: var( --os-ui-hover, #dcdcde );
-	color: var( --os-ui-fg, #1d2327 );
-}
-
-.os-chromeless .os-editor-sidecar-window-close svg {
-	width: 16px;
-	height: 16px;
-	pointer-events: none;
-}
-
-.os-chromeless .os-editor-sidecar-window-close:focus-visible {
-	outline: 2px solid var( --wp-admin-theme-color, #2271b1 );
-	outline-offset: 1px;
-}
-
-/* The bridge positions this fixed separator over the sidebar's live
- * leading edge, below Gutenberg's header. It lives under <body>, not
- * inside the React root, so a sidebar repaint cannot delete it. */
+/* Retained for keyboard width persistence and the legacy message
+ * contract. The outer OpenStation window is the visible resize surface
+ * in detached mode, so this inner separator stays hidden there. */
 .os-chromeless .os-editor-sidecar-resizer {
 	position: fixed;
 	width: 9px;
@@ -586,6 +519,10 @@ html.wp-toolbar:has( body.os-chromeless ) {
 	cursor: col-resize;
 	touch-action: none;
 	z-index: 100002;
+}
+
+.os-chromeless.os-editor-sidecar-detached .os-editor-sidecar-resizer {
+	display: none;
 }
 
 .os-chromeless .os-editor-sidecar-resizer::before {
@@ -612,18 +549,6 @@ html.wp-toolbar:has( body.os-chromeless ) {
 .os-chromeless.os-editor-sidecar-resizing * {
 	cursor: col-resize !important;
 	user-select: none !important;
-}
-
-@media ( max-width: 640px ) {
-	.os-chromeless.os-editor-sidecar-active
-		.interface-interface-skeleton__sidebar {
-		margin-block: 6px;
-		margin-inline: 7px 6px;
-		border-radius: 6px;
-		box-shadow:
-			0 1px 2px rgba( 0, 0, 0, 0.08 ),
-			0 4px 12px rgba( 0, 0, 0, 0.1 );
-	}
 }
 
 /* ---------------------------------------------------------------

@@ -585,20 +585,21 @@ export function installEditorAutosaveHandler(): void {
 /**
  * Install the iframe half of Gutenberg's Sidebar Window.
  *
- * Sidebar Window is deliberately attached chrome around the existing
- * editor sidebar, not a second document. Gutenberg and plugin sidebars are
- * React SlotFills tied to this window's data registry; copying their
- * DOM elsewhere would break delegated events, while loading the post
- * twice would create competing dirty state and autosaves.
+ * A companion editor iframe uses this handler to suppress its duplicate
+ * canvas and let Gutenberg's complementary area fill a separate, real
+ * OpenStation window. The source editor uses the same handler to park its
+ * own complementary area while that companion is open, then restore the
+ * exact Post, Block, or plugin area when the companion closes.
  *
  * Parent → iframe:
- *  - `os-editor-sidecar-set` `{ active: boolean }`
+ *  - `os-editor-sidecar-set` `{ active, detached?, area? }`
+ *  - `os-editor-sidecar-source` `{ parked: boolean }`
  *
  * Iframe → parent:
  *  - `os-editor-sidecar-state` `{ active, available, width }`
  *
- * The injected title bar and CSS only add presentation and geometry.
- * The sidebar's original React tree remains mounted and interactive here.
+ * The outer shell supplies all visible window chrome. This handler never
+ * adopts or clones Gutenberg DOM across documents.
  */
 export function installEditorSidecarHandler(): void {
 	const flagged = window as unknown as {
@@ -615,10 +616,13 @@ export function installEditorSidecarHandler(): void {
 	const DESKTOP_MIN_WIDTH = 280;
 	const ABSOLUTE_MAX_WIDTH = 520;
 	const MIN_EDITOR_WIDTH = 320;
+	const INITIAL_SIDEBAR_TIMEOUT_MS = 4000;
 
 	interface ComplementaryAreaSelect {
 		getActiveComplementaryArea?: ( scope: string ) => string | null;
 		getActiveGeneralSidebarName?: () => string | null;
+		get?: ( scope: string, name: string ) => unknown;
+		isFeatureActive?: ( name: string ) => boolean;
 	}
 
 	interface ComplementaryAreaDispatch {
@@ -626,6 +630,8 @@ export function installEditorSidecarHandler(): void {
 		disableComplementaryArea?: ( scope: string ) => void;
 		openGeneralSidebar?: ( area: string ) => void;
 		closeGeneralSidebar?: () => void;
+		set?: ( scope: string, name: string, value: unknown ) => void;
+		toggleFeature?: ( name: string ) => void;
 	}
 
 	interface SidecarWp {
@@ -735,7 +741,10 @@ export function installEditorSidecarHandler(): void {
 	let resizeObserver: ResizeObserver | null = null;
 	let missingTimer: number | null = null;
 	let handle: HTMLDivElement | null = null;
-	let windowChrome: HTMLDivElement | null = null;
+	let detached = false;
+	let sourceParked = false;
+	let parkedSourceArea: string | null = null;
+	let distractionFreeWasEnabled = false;
 	let dragging = false;
 	let dragStartX = 0;
 	let dragStartWidth = 0;
@@ -795,6 +804,45 @@ export function installEditorSidecarHandler(): void {
 			}
 		}
 		window.requestAnimationFrame( updateWindowGeometry );
+	};
+
+	const setDistractionFree = ( enabled: boolean ): void => {
+		const data = getWp()?.data;
+		if ( ! data?.select || ! data.dispatch ) {
+			return;
+		}
+		const preferences = data.select( 'core/preferences' );
+		const preferencesDispatch = data.dispatch( 'core/preferences' );
+		if (
+			typeof preferences?.get === 'function' &&
+			typeof preferencesDispatch?.set === 'function'
+		) {
+			if ( preferences.get( 'core', 'distractionFree' ) !== enabled ) {
+				preferencesDispatch.set( 'core', 'distractionFree', enabled );
+			}
+			return;
+		}
+		const legacy = data.select( 'core/edit-post' );
+		const legacyDispatch = data.dispatch( 'core/edit-post' );
+		if (
+			typeof legacy?.isFeatureActive === 'function' &&
+			typeof legacyDispatch?.toggleFeature === 'function' &&
+			legacy.isFeatureActive( 'distractionFree' ) !== enabled
+		) {
+			legacyDispatch.toggleFeature( 'distractionFree' );
+		}
+	};
+
+	const prepareDetachedEditor = (): void => {
+		const data = getWp()?.data;
+		const preferences = data?.select?.( 'core/preferences' );
+		const legacy = data?.select?.( 'core/edit-post' );
+		distractionFreeWasEnabled =
+			preferences?.get?.( 'core', 'distractionFree' ) === true ||
+			legacy?.isFeatureActive?.( 'distractionFree' ) === true;
+		if ( distractionFreeWasEnabled ) {
+			setDistractionFree( false );
+		}
 	};
 
 	const stopDragging = (): void => {
@@ -858,32 +906,6 @@ export function installEditorSidecarHandler(): void {
 		return next;
 	};
 
-	const createWindowChrome = ( sidebar: HTMLElement ): HTMLDivElement => {
-		const chrome = document.createElement( 'div' );
-		chrome.className = 'os-editor-sidecar-window-chrome';
-		chrome.setAttribute( 'role', 'toolbar' );
-		chrome.setAttribute( 'aria-label', 'Sidebar Window controls' );
-
-		const title = document.createElement( 'span' );
-		title.className = 'os-editor-sidecar-window-title';
-		title.textContent = 'Sidebar Window';
-
-		const close = document.createElement( 'button' );
-		close.className = 'os-editor-sidecar-window-close';
-		close.type = 'button';
-		close.setAttribute( 'aria-label', 'Close Sidebar Window' );
-		close.title = 'Close Sidebar Window';
-		close.textContent = '\u00d7';
-		close.addEventListener( 'click', ( event ) => {
-			event.stopPropagation();
-			deactivate( true );
-		} );
-
-		chrome.append( title, close );
-		sidebar.prepend( chrome );
-		return chrome;
-	};
-
 	const deactivate = ( closeSidebar: boolean ): void => {
 		if ( ! active ) {
 			report();
@@ -901,10 +923,15 @@ export function installEditorSidecarHandler(): void {
 		}
 		handle?.remove();
 		handle = null;
-		windowChrome?.remove();
-		windowChrome = null;
 		document.body.classList.remove( 'os-editor-sidecar-active' );
 		document.documentElement.classList.remove( 'os-editor-sidecar-active' );
+		document.body.classList.remove( 'os-editor-sidecar-detached' );
+		document.documentElement.classList.remove( 'os-editor-sidecar-detached' );
+		if ( detached && distractionFreeWasEnabled ) {
+			setDistractionFree( true );
+		}
+		distractionFreeWasEnabled = false;
+		detached = false;
 		if ( closeSidebar ) {
 			try {
 				getController()?.close();
@@ -927,7 +954,8 @@ export function installEditorSidecarHandler(): void {
 			// Once a real sidebar existed, its sustained disappearance means
 			// the user pressed Gutenberg's own Close button. A short grace
 			// period lets React switch plugin sidebars without false-closing.
-			if ( sidebarSeen && missingTimer === null ) {
+			if ( missingTimer === null ) {
+				const timeout = sidebarSeen ? 350 : INITIAL_SIDEBAR_TIMEOUT_MS;
 				missingTimer = window.setTimeout( () => {
 					missingTimer = null;
 					if (
@@ -938,7 +966,7 @@ export function installEditorSidecarHandler(): void {
 					) {
 						deactivate( false );
 					}
-				}, 350 );
+				}, timeout );
 			}
 			return;
 		}
@@ -951,10 +979,6 @@ export function installEditorSidecarHandler(): void {
 		if ( ! handle ) {
 			handle = createHandle();
 		}
-		if ( ! windowChrome?.isConnected ) {
-			windowChrome?.remove();
-			windowChrome = createWindowChrome( sidebar );
-		}
 		resizeObserver?.disconnect();
 		if ( typeof ResizeObserver === 'function' ) {
 			resizeObserver = new ResizeObserver( updateWindowGeometry );
@@ -963,7 +987,10 @@ export function installEditorSidecarHandler(): void {
 		updateWindowGeometry();
 	};
 
-	const activate = (): void => {
+	const activate = (
+		preferredArea: string | null = null,
+		detachedMode = false,
+	): void => {
 		if ( ! isAvailable() ) {
 			active = false;
 			report( false );
@@ -982,21 +1009,58 @@ export function installEditorSidecarHandler(): void {
 		}
 		const currentArea = controller.getActive();
 		active = true;
+		detached = detachedMode;
 		document.body.classList.add( 'os-editor-sidecar-active' );
 		document.documentElement.classList.add( 'os-editor-sidecar-active' );
+		document.body.classList.toggle( 'os-editor-sidecar-detached', detached );
+		document.documentElement.classList.toggle(
+			'os-editor-sidecar-detached',
+			detached,
+		);
+		if ( detached ) {
+			prepareDetachedEditor();
+		}
 		setWidth( width, false );
 		observer = new MutationObserver( syncSidebar );
 		observer.observe( document.body, { childList: true, subtree: true } );
-		if ( ! currentArea ) {
+		if ( preferredArea && preferredArea !== currentArea ) {
+			controller.open( preferredArea );
+		} else if ( ! currentArea ) {
 			controller.open( 'edit-post/document' );
 		}
 		window.setTimeout( syncSidebar, 0 );
 		report( true );
 	};
 
+	const setSourceParked = ( parked: boolean ): void => {
+		const controller = getController();
+		if ( ! controller || parked === sourceParked ) {
+			return;
+		}
+		if ( parked ) {
+			sourceParked = true;
+			parkedSourceArea = controller.getActive();
+			if ( parkedSourceArea ) {
+				controller.close();
+			}
+			return;
+		}
+		sourceParked = false;
+		const restoreArea = parkedSourceArea;
+		parkedSourceArea = null;
+		if ( restoreArea ) {
+			controller.open( restoreArea );
+		}
+	};
+
 	window.addEventListener( 'pointermove', onPointerMove );
 	window.addEventListener( 'pointerup', stopDragging );
 	window.addEventListener( 'pointercancel', stopDragging );
+	window.addEventListener( 'pagehide', () => {
+		if ( detached && distractionFreeWasEnabled ) {
+			setDistractionFree( true );
+		}
+	} );
 	window.addEventListener( 'resize', () => {
 		if ( active ) {
 			setWidth( width, false );
@@ -1008,7 +1072,20 @@ export function installEditorSidecarHandler(): void {
 		if ( event.origin !== origin ) {
 			return;
 		}
-		const data = event.data as { type?: unknown; active?: unknown } | null;
+		const data = event.data as {
+			type?: unknown;
+			active?: unknown;
+			detached?: unknown;
+			area?: unknown;
+			parked?: unknown;
+		} | null;
+		if (
+			data?.type === 'os-editor-sidecar-source' &&
+			typeof data.parked === 'boolean'
+		) {
+			setSourceParked( data.parked );
+			return;
+		}
 		if (
 			! data ||
 			data.type !== 'os-editor-sidecar-set' ||
@@ -1017,11 +1094,28 @@ export function installEditorSidecarHandler(): void {
 			return;
 		}
 		if ( data.active ) {
-			activate();
+			activate(
+				typeof data.area === 'string' ? data.area : null,
+				data.detached === true,
+			);
 		} else {
 			deactivate( true );
 		}
 	} );
+
+	try {
+		if (
+			new URL( window.location.href ).searchParams.get(
+				'openstation_sidebar_window',
+			) === '1'
+		) {
+			detached = true;
+			document.body.classList.add( 'os-editor-sidecar-detached' );
+			document.documentElement.classList.add( 'os-editor-sidecar-detached' );
+		}
+	} catch {
+		/* Malformed synthetic URL — the parent readiness probe will close it. */
+	}
 }
 
 ( function() {

@@ -2629,15 +2629,17 @@ The PHP-side control point is the `openstation_window_preview_url` filter (rewri
 
 Gutenberg post-editor windows show a **Sidebar Window** button (columns icon, right side of the outer OpenStation title bar, immediately before Preview; registered as `desktop-mode/editor-sidecar`). It appears only after the iframe has booted both the `core/editor` store and a complementary-area store (`core/interface` or the legacy `core/edit-post` store), so Classic Editor and unrelated admin screens never receive a dead control.
 
-The button presents Gutenberg's existing complementary area as a visibly attached window beside the post canvas. The attached window gets its own compact title bar and close control, a border and clear gap from the canvas, and a leading-edge resize handle. It works with Core's Post and Block settings and with plugin-owned Gutenberg sidebars: any Yoast, Rank Math, ACF, or other plugin surface registered through the normal complementary-area APIs keeps its own React components, data-store subscriptions, controls, and behavior. Closing the attached window also clears the outer title-bar button's pressed state and persisted active state.
+Clicking the button creates two real sibling OpenStation windows. The source editor keeps its iframe and snaps left after its current complementary-area id is captured and parked. An iframe-backed companion named `${sourceWindowId}--sidebar-window` opens snapped right on the same virtual desktop, loads the source's current post URL with `openstation_sidebar_window=1`, and carries `ephemeral: true`. Only the source receives the title-bar toggle, so companions cannot recursively detach another sidebar.
 
-The attached presentation is deliberately **window chrome, not another window document**. There is still one editor in one iframe and one Gutenberg React/data instance. OpenStation does not start a second Gutenberg instance, which would introduce competing dirty state, undo history, autosaves, post locks, and save requests. It also does not move arbitrary plugin-owned React DOM into a second document: doing so would separate those nodes from the React root and its delegated events, context providers, portals, styles, and document-scoped focus handling. The visible title bar, close control, border, gap, and resizer are added inside the document that already owns the complementary area.
+The shell waits for the companion iframe's `os-ready` handshake before sending `{ active: true, detached: true, area }`. The companion opens that area through `core/interface` or `core/edit-post`; detached CSS hides its duplicate Gutenberg header, post canvas, and footer and stretches its complementary area across the iframe. The title bar, close control, border, drag surface, and resize handles are the standard outer OpenStation window chrome. No faux title bar or sidebar DOM is injected into the source editor.
 
-The attached window has a draggable, keyboard-operable resizer. Its width defaults to 320px and persists in `localStorage` as `openstation.editorSidecar.width`. Normal desktop bounds are 280–520px; the upper bound also leaves at least 320px for the editor canvas, and a narrow iframe can compress the attached window to 240px. Arrow keys move the focused resizer by 8px (Shift+Arrow by 32px), Home / End select the current minimum / maximum, and double-click restores 320px.
+This is intentionally a **second Gutenberg document**. A single iframe cannot render into two independent shell-window rectangles, and moving arbitrary plugin-owned React DOM into the parent would sever delegated events, contexts, portals, styles, owner-document queries, focus traps, and measurement assumptions. Loading the same post again preserves a plugin sidebar's normal Gutenberg runtime, but the companion consequently has its own React/data registry, dirty flag, undo history, autosave timer, post-lock view, and save lifecycle. OpenStation does not synchronize it with the editable source. Plugin sidebars that mutate editor state can therefore race or overwrite source changes and must be compatibility-tested; panels backed by independent REST state generally have fewer coupling risks.
 
-The shell separately persists at most 64 active editor-window ids in `openstation.editorSidecar.activeWindows`. After session restoration or an iframe navigation, it waits for that editor's `os-ready` handshake and rebuilds the attached window chrome around the live complementary area. On desktop viewports at least 960px wide, activating Sidebar Window also maximizes an editor narrower than 900px once so the canvas and attached window both have useful room. The button remains available on smaller viewports, where the iframe-side width cap protects the canvas.
+Closing the companion, toggling the source button off, or closing Gutenberg's complementary area inside the companion clears the pressed/persisted state and unparks the source, restoring the exact area that was active before detaching. During the same page lifetime, the source's prior layout is restored when possible. Closing the source destroys its companion.
 
-The low-level `os-editor-sidecar-set` / `os-editor-sidecar-state` messages are internal shell-to-editor synchronization primitives, documented in [Bridge protocol](./bridge-protocol.md#sidebar-window-state--os-editor-sidecar-). Plugin integrations should keep registering ordinary Gutenberg `PluginSidebar` / complementary-area surfaces; they require no OpenStation-specific API.
+The parent persists at most 64 active **source** window ids in `openstation.editorSidecar.activeWindows`. The companion itself is excluded from session snapshots. On session restoration the shell waits for the restored source iframe to become Gutenberg-ready, then creates a fresh ephemeral `${sourceWindowId}--sidebar-window`; it never revives a stale companion document independently.
+
+The low-level `os-editor-sidecar-source`, `os-editor-sidecar-set`, and `os-editor-sidecar-state` messages are internal synchronization primitives documented in [Bridge protocol](./bridge-protocol.md#sidebar-window-state--os-editor-sidecar-). Plugin integrations continue to register ordinary Gutenberg `PluginSidebar` / complementary-area surfaces, but should test the two-document save and state model before claiming Sidebar Window compatibility.
 
 ### `registerWindowLinkRenderer( def )` — Experimental
 
@@ -3599,7 +3601,7 @@ Reports which screen-meta panel (if any) is currently open inside the iframe.
 
 #### `os-editor-sidecar-state` — Experimental
 
-Reports the effective state of the attached Sidebar Window after an [`os-editor-sidecar-set`](#os-editor-sidecar-set--experimental) request or its close action. The parent uses `active` and `available` to keep the outer title-bar button and persisted active-window set synchronized with the editor that owns the real UI; `width` records the current clamped width for diagnostics. `available: false` means the page does not currently expose a compatible Gutenberg complementary area.
+Reports the effective state of the managed companion after an [`os-editor-sidecar-set`](#os-editor-sidecar-set--experimental) request or after Gutenberg removes its complementary area. The parent accepts this only from the expected `${sourceWindowId}--sidebar-window` iframe. `active: false` or `available: false` closes the sibling, unparks the source, and clears the persisted source id. `width` is the iframe bridge's legacy inner-sidebar diagnostic, not the outer OpenStation window width.
 
 ```typescript
 { type: 'os-editor-sidecar-state'; active: boolean; available: boolean; width: number }
@@ -3719,10 +3721,23 @@ Asks the iframe to toggle a named screen-meta panel. The iframe is the authority
 
 #### `os-editor-sidecar-set` — Experimental
 
-Creates or removes the attached Sidebar Window chrome around Gutenberg's existing complementary area inside the post-editor iframe, then answers with [`os-editor-sidecar-state`](#os-editor-sidecar-state--experimental). The message is idempotent; pages without the required Gutenberg stores and DOM answer with `active: false, available: false`.
+Activates a complementary area inside a Sidebar Window iframe, then answers with [`os-editor-sidecar-state`](#os-editor-sidecar-state--experimental). The managed sibling receives this only after `IFRAME_READY`, with `detached: true` and the area id captured from the source. Detached mode hides that iframe's duplicate editor canvas so its own Gutenberg sidebar fills the outer OpenStation window. `active: false` removes the mode and closes the iframe's active area; pages without the required stores and DOM answer with `active: false, available: false`.
 
 ```typescript
-{ type: 'os-editor-sidecar-set'; active: boolean }
+{
+    type: 'os-editor-sidecar-set';
+    active: boolean;
+    detached?: boolean;
+    area?: string | null;
+}
+```
+
+#### `os-editor-sidecar-source` — Experimental
+
+Parks or restores the source editor's complementary area while its managed sibling is open. On the first `parked: true`, the iframe remembers the exact active area and closes it; duplicate park messages are idempotent. `parked: false` reopens the remembered area so Post, Block, and plugin panels return to the source after the sibling closes.
+
+```typescript
+{ type: 'os-editor-sidecar-source'; parked: boolean }
 ```
 
 #### `os-commands-subscribe` — Experimental

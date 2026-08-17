@@ -1,10 +1,9 @@
 /**
  * Iframe-side tests for Gutenberg's Sidebar Window handler.
  *
- * These exercise the compound-editor contract: the existing
- * complementary area stays in the one Gutenberg document, while the
- * bridge supplies layout classes, an accessible resizer, persistence,
- * and state messages for the parent shell.
+ * The source editor parks its complementary area while a separate
+ * managed OpenStation window displays the requested area. The bridge
+ * must restore the exact source area when that sibling closes.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { installEditorSidecarHandler } from '../../src/iframe-bridge-standalone';
@@ -27,11 +26,27 @@ interface GutenbergRig {
 let postMessage: ReturnType< typeof vi.spyOn >;
 let installed = false;
 
-function sendSet( active: boolean, origin = window.location.origin ): void {
+function sendSet(
+	active: boolean,
+	opts: { detached?: boolean; area?: string | null } = {},
+	origin = window.location.origin,
+): void {
 	window.dispatchEvent(
 		new MessageEvent( 'message', {
 			origin,
-			data: { type: 'os-editor-sidecar-set', active },
+			data: { type: 'os-editor-sidecar-set', active, ...opts },
+		} ),
+	);
+}
+
+function sendSource(
+	parked: boolean,
+	origin = window.location.origin,
+): void {
+	window.dispatchEvent(
+		new MessageEvent( 'message', {
+			origin,
+			data: { type: 'os-editor-sidecar-source', parked },
 		} ),
 	);
 }
@@ -121,21 +136,13 @@ async function handle(): Promise< HTMLElement > {
 	return document.querySelector( '.os-editor-sidecar-resizer' )!;
 }
 
-async function attachedChrome(): Promise< HTMLElement > {
-	await vi.waitFor( () => {
-		if ( ! document.querySelector( '.os-editor-sidecar-window-chrome' ) ) {
-			throw new Error( 'attached sidebar window chrome not mounted yet' );
-		}
-	} );
-	return document.querySelector( '.os-editor-sidecar-window-chrome' )!;
-}
-
 beforeEach( () => {
 	// The production installer intentionally has page-lifetime state and
 	// deduplicates itself. Keep one listener for this jsdom document and
 	// return it to its inactive baseline between tests.
 	if ( installed ) {
 		sendSet( false );
+		sendSource( false );
 	}
 	document.body.innerHTML = '';
 	document.body.className = '';
@@ -158,6 +165,7 @@ beforeEach( () => {
 
 afterEach( () => {
 	sendSet( false );
+	sendSource( false );
 	postMessage.mockRestore();
 	delete ( window as unknown as { wp?: unknown } ).wp;
 	vi.useRealTimers();
@@ -182,23 +190,23 @@ describe( 'installEditorSidecarHandler', () => {
 		).toBe( false );
 	} );
 
-	test( 'opens Gutenberg document settings and mounts attached window chrome', async () => {
+	test( 'opens the requested area in detached sidebar-only mode', async () => {
 		const gutenberg = installGutenberg();
 		addEditorDom();
 
-		sendSet( true );
-		const chrome = await attachedChrome();
-		const close = chrome.querySelector< HTMLButtonElement >( 'button' );
+		sendSet( true, {
+			detached: true,
+			area: 'yoast-seo/sidebar',
+		} );
+		await handle();
 
 		expect( gutenberg.enable ).toHaveBeenCalledWith(
 			'core',
-			'edit-post/document',
+			'yoast-seo/sidebar',
 		);
-		expect( chrome.textContent ).toContain( 'Sidebar Window' );
-		expect( close ).not.toBeNull();
-		expect( close!.getAttribute( 'aria-label' ) ).toBe(
-			'Close Sidebar Window',
-		);
+		expect(
+			document.querySelector( '.os-editor-sidecar-window-chrome' ),
+		).toBeNull();
 		expect( document.body.classList.contains( 'os-editor-sidecar-active' ) ).toBe(
 			true,
 		);
@@ -212,7 +220,7 @@ describe( 'installEditorSidecarHandler', () => {
 				'--os-editor-sidecar-width',
 			),
 		).toBe( '320px' );
-		expect( lastState() ).toEqual( {
+		expect( lastState() ).toMatchObject( {
 			type: 'os-editor-sidecar-state',
 			active: true,
 			available: true,
@@ -236,45 +244,24 @@ describe( 'installEditorSidecarHandler', () => {
 		} );
 	} );
 
-	test( 'attached chrome close tears down the window and reports inactive', async () => {
+	test( 'parks and safely restores the source complementary area', () => {
 		const gutenberg = installGutenberg( 'yoast-seo/sidebar' );
 		addEditorDom();
-		sendSet( true );
-		const chrome = await attachedChrome();
-		const resizer = await handle();
-		resizer.dispatchEvent(
-			new MouseEvent( 'pointerdown', {
-				bubbles: true,
-				button: 0,
-				clientX: 860,
-			} ),
-		);
-		expect(
-			document.body.classList.contains( 'os-editor-sidecar-resizing' ),
-		).toBe( true );
 
-		chrome.querySelector< HTMLButtonElement >( 'button' )!.click();
-
+		sendSource( true );
 		expect( gutenberg.disable ).toHaveBeenCalledWith( 'core' );
-		expect(
-			document.querySelector( '.os-editor-sidecar-window-chrome' ),
-		).toBeNull();
-		expect( document.querySelector( '.os-editor-sidecar-resizer' ) ).toBeNull();
-		expect( document.body.classList.contains( 'os-editor-sidecar-active' ) ).toBe(
-			false,
+		expect( gutenberg.activeArea ).toBeNull();
+
+		// Duplicate park messages must not overwrite the remembered area
+		// with null during iframe-ready/session replay.
+		sendSource( true );
+		sendSource( false );
+
+		expect( gutenberg.enable ).toHaveBeenLastCalledWith(
+			'core',
+			'yoast-seo/sidebar',
 		);
-		expect(
-			document.documentElement.classList.contains(
-				'os-editor-sidecar-active',
-			),
-		).toBe( false );
-		expect(
-			document.body.classList.contains( 'os-editor-sidecar-resizing' ),
-		).toBe( false );
-		expect( lastState() ).toMatchObject( {
-			active: false,
-			available: true,
-		} );
+		expect( gutenberg.activeArea ).toBe( 'yoast-seo/sidebar' );
 	} );
 
 	test( 'mounts an accessible keyboard resizer and persists clamped width', async () => {
@@ -360,7 +347,8 @@ describe( 'installEditorSidecarHandler', () => {
 		const gutenberg = installGutenberg();
 		addEditorDom( false );
 
-		sendSet( true, 'https://attacker.test' );
+		sendSet( true, {}, 'https://attacker.test' );
+		sendSource( true, 'https://attacker.test' );
 
 		expect( gutenberg.enable ).not.toHaveBeenCalled();
 		expect( states() ).toHaveLength( 0 );
