@@ -265,7 +265,17 @@ export function bootEditorSidecar( {
 			// stale controls after navigation, then probe until the editor is
 			// actually capable of hosting the sidecar.
 			win.renderCustomTitleBarButtons?.();
-			probeGutenbergReadiness( win.id );
+			if ( isGutenbergEditor( win ) ) {
+				if ( store.state.activeEditors.has( win.id ) ) {
+					postSidecarState( win, true );
+				}
+				return;
+			}
+			const timer = window.setTimeout( () => {
+				readinessProbes.delete( win.id );
+				probeGutenbergReadiness( win.id, 1 );
+			}, GUTENBERG_PROBE_INTERVAL_MS );
+			readinessProbes.set( win.id, timer );
 		},
 	);
 
