@@ -39,6 +39,9 @@ Zero Core patches. Every feature is wired through public WordPress hooks.
 - **Window system — iframe + native**
   Iframe windows load admin pages with `?openstation_chromeless=1` (chromeless mode). Native windows render directly in the parent DOM via `openstation_register_window()` / `wp.os.registerWindow()` — multi-tab native windows are supported through `openstation_register_window_tab()`. Both types share drag, resize, minimize, maximize, close, fullscreen, and detach-to-new-tab.
 
+- **Gutenberg Editor Sidecar**
+  Gutenberg editor windows gain a title-bar toggle that keeps the post canvas and the current Post, Block, or plugin sidebar visible side by side. The divider is resizable, its width persists, and restored editor windows reopen the sidecar without starting a second Gutenberg instance or a competing autosave session.
+
 - **Dock**
   One unified rail hosting every admin menu — core and plugin alike — plus shell-level system tiles. Placement (left / right / bottom) is the user's OS Settings preference. Core menus are ordered before plugin menus; per-item hiding via `openstation_dock_placement` (`'hidden'`). Per-item multi-window support via `openstation_dock_item_multi`. Letter-badge icon fallback for plugins without icon art.
 

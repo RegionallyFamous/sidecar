@@ -582,6 +582,409 @@ export function installEditorAutosaveHandler(): void {
 	} );
 }
 
+/**
+ * Install the iframe half of Gutenberg's Editor Sidecar.
+ *
+ * The sidecar is deliberately a layout mode of the existing editor,
+ * not a second editor document. Gutenberg and plugin sidebars are
+ * React SlotFills tied to this window's data registry; copying their
+ * DOM elsewhere would break delegated events, while loading the post
+ * twice would create competing dirty state and autosaves.
+ *
+ * Parent → iframe:
+ *  - `os-editor-sidecar-set` `{ active: boolean }`
+ *
+ * Iframe → parent:
+ *  - `os-editor-sidecar-state` `{ active, available, width }`
+ *
+ * The CSS class only changes geometry. The sidebar's original React
+ * tree remains mounted and interactive inside this document.
+ */
+export function installEditorSidecarHandler(): void {
+	const flagged = window as unknown as {
+		__openStationEditorSidecarInstalled?: boolean;
+	};
+	if ( flagged.__openStationEditorSidecarInstalled ) {
+		return;
+	}
+	flagged.__openStationEditorSidecarInstalled = true;
+
+	const origin = window.location.origin;
+	const WIDTH_STORAGE_KEY = 'openstation.editorSidecar.width';
+	const DEFAULT_WIDTH = 320;
+	const DESKTOP_MIN_WIDTH = 280;
+	const ABSOLUTE_MAX_WIDTH = 520;
+	const MIN_EDITOR_WIDTH = 320;
+
+	interface ComplementaryAreaSelect {
+		getActiveComplementaryArea?: ( scope: string ) => string | null;
+		getActiveGeneralSidebarName?: () => string | null;
+	}
+
+	interface ComplementaryAreaDispatch {
+		enableComplementaryArea?: ( scope: string, area: string ) => void;
+		disableComplementaryArea?: ( scope: string ) => void;
+		openGeneralSidebar?: ( area: string ) => void;
+		closeGeneralSidebar?: () => void;
+	}
+
+	interface SidecarWp {
+		data?: {
+			select?: ( store: string ) => ComplementaryAreaSelect | undefined;
+			dispatch?: ( store: string ) => ComplementaryAreaDispatch | undefined;
+		};
+	}
+
+	interface AreaController {
+		getActive: () => string | null;
+		open: ( area: string ) => void;
+		close: () => void;
+	}
+
+	const getWp = (): SidecarWp | undefined =>
+		( window as unknown as { wp?: SidecarWp } ).wp;
+
+	const getController = (): AreaController | null => {
+		const data = getWp()?.data;
+		if ( ! data?.select || ! data.dispatch ) {
+			return null;
+		}
+
+		// Current Gutenberg: the interface scopes merged into `core`,
+		// while the registered data store remains `core/interface`.
+		const modernSelect = data.select( 'core/interface' );
+		const modernDispatch = data.dispatch( 'core/interface' );
+		if (
+			typeof modernSelect?.getActiveComplementaryArea === 'function' &&
+			typeof modernDispatch?.enableComplementaryArea === 'function' &&
+			typeof modernDispatch?.disableComplementaryArea === 'function'
+		) {
+			return {
+				getActive: () =>
+					modernSelect.getActiveComplementaryArea?.( 'core' ) ?? null,
+				open: ( area ) =>
+					modernDispatch.enableComplementaryArea?.( 'core', area ),
+				close: () => modernDispatch.disableComplementaryArea?.( 'core' ),
+			};
+		}
+
+		// Older supported Gutenberg builds exposed the same behavior on
+		// the edit-post store under the "general sidebar" names.
+		const legacySelect = data.select( 'core/edit-post' );
+		const legacyDispatch = data.dispatch( 'core/edit-post' );
+		if (
+			typeof legacySelect?.getActiveGeneralSidebarName === 'function' &&
+			typeof legacyDispatch?.openGeneralSidebar === 'function' &&
+			typeof legacyDispatch?.closeGeneralSidebar === 'function'
+		) {
+			return {
+				getActive: () => legacySelect.getActiveGeneralSidebarName?.() ?? null,
+				open: ( area ) => legacyDispatch.openGeneralSidebar?.( area ),
+				close: () => legacyDispatch.closeGeneralSidebar?.(),
+			};
+		}
+
+		return null;
+	};
+
+	const isAvailable = (): boolean => {
+		try {
+			const data = getWp()?.data;
+			return !! (
+				data?.select?.( 'core/editor' ) &&
+				getController() &&
+				document.querySelector( '.interface-interface-skeleton' )
+			);
+		} catch {
+			return false;
+		}
+	};
+
+	const widthBounds = (): { min: number; max: number } => {
+		const max = Math.max(
+			240,
+			Math.min( ABSOLUTE_MAX_WIDTH, window.innerWidth - MIN_EDITOR_WIDTH ),
+		);
+		return { min: Math.min( DESKTOP_MIN_WIDTH, max ), max };
+	};
+
+	const clampWidth = ( candidate: number ): number => {
+		const { min, max } = widthBounds();
+		return Math.round( Math.min( max, Math.max( min, candidate ) ) );
+	};
+
+	const readWidth = (): number => {
+		try {
+			const value = Number( window.localStorage.getItem( WIDTH_STORAGE_KEY ) );
+			return clampWidth( Number.isFinite( value ) && value > 0 ? value : DEFAULT_WIDTH );
+		} catch {
+			return clampWidth( DEFAULT_WIDTH );
+		}
+	};
+
+	let width = readWidth();
+	let active = false;
+	let openedBySidecar = false;
+	let sidebarSeen = false;
+	let observer: MutationObserver | null = null;
+	let resizeObserver: ResizeObserver | null = null;
+	let missingTimer: number | null = null;
+	let handle: HTMLDivElement | null = null;
+	let dragging = false;
+	let dragStartX = 0;
+	let dragStartWidth = 0;
+
+	const report = ( available = isAvailable() ): void => {
+		try {
+			window.parent.postMessage(
+				{
+					type: 'os-editor-sidecar-state',
+					active,
+					available,
+					width,
+				},
+				origin,
+			);
+		} catch {
+			/* parent gone */
+		}
+	};
+
+	const updateHandleGeometry = (): void => {
+		if ( ! active || ! handle ) {
+			return;
+		}
+		const sidebar = document.querySelector< HTMLElement >(
+			'.interface-interface-skeleton__sidebar',
+		);
+		if ( ! sidebar ) {
+			return;
+		}
+		const rect = sidebar.getBoundingClientRect();
+		const rtl = window.getComputedStyle( document.documentElement ).direction === 'rtl';
+		const edge = rtl ? rect.right : rect.left;
+		handle.style.left = `${ Math.round( edge - 4 ) }px`;
+		handle.style.top = `${ Math.round( rect.top ) }px`;
+		handle.style.height = `${ Math.round( rect.height ) }px`;
+		const { min, max } = widthBounds();
+		handle.setAttribute( 'aria-valuemin', String( min ) );
+		handle.setAttribute( 'aria-valuemax', String( max ) );
+		handle.setAttribute( 'aria-valuenow', String( width ) );
+	};
+
+	const setWidth = ( next: number, persist = true ): void => {
+		width = clampWidth( next );
+		document.documentElement.style.setProperty(
+			'--os-editor-sidecar-width',
+			`${ width }px`,
+		);
+		if ( persist ) {
+			try {
+				window.localStorage.setItem( WIDTH_STORAGE_KEY, String( width ) );
+			} catch {
+				/* localStorage blocked — keep the in-page width. */
+			}
+		}
+		window.requestAnimationFrame( updateHandleGeometry );
+	};
+
+	const stopDragging = (): void => {
+		if ( ! dragging ) {
+			return;
+		}
+		dragging = false;
+		document.body.classList.remove( 'os-editor-sidecar-resizing' );
+	};
+
+	const onPointerMove = ( event: PointerEvent ): void => {
+		if ( ! dragging ) {
+			return;
+		}
+		const rtl = window.getComputedStyle( document.documentElement ).direction === 'rtl';
+		const delta = event.clientX - dragStartX;
+		setWidth( dragStartWidth + ( rtl ? delta : -delta ) );
+	};
+
+	const createHandle = (): HTMLDivElement => {
+		const next = document.createElement( 'div' );
+		next.className = 'os-editor-sidecar-resizer';
+		next.tabIndex = 0;
+		next.setAttribute( 'role', 'separator' );
+		next.setAttribute( 'aria-orientation', 'vertical' );
+		next.setAttribute( 'aria-label', 'Resize editor sidecar' );
+		next.title = 'Drag to resize the editor sidecar';
+		next.addEventListener( 'pointerdown', ( event: PointerEvent ) => {
+			if ( event.button !== 0 ) {
+				return;
+			}
+			event.preventDefault();
+			dragging = true;
+			dragStartX = event.clientX;
+			dragStartWidth = width;
+			document.body.classList.add( 'os-editor-sidecar-resizing' );
+			next.setPointerCapture?.( event.pointerId );
+		} );
+		next.addEventListener( 'keydown', ( event: KeyboardEvent ) => {
+			if ( event.key === 'Home' ) {
+				event.preventDefault();
+				setWidth( widthBounds().min );
+				return;
+			}
+			if ( event.key === 'End' ) {
+				event.preventDefault();
+				setWidth( widthBounds().max );
+				return;
+			}
+			if ( event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' ) {
+				return;
+			}
+			event.preventDefault();
+			const rtl = window.getComputedStyle( document.documentElement ).direction === 'rtl';
+			const movement = event.key === 'ArrowLeft' ? -1 : 1;
+			const step = event.shiftKey ? 32 : 8;
+			setWidth( width + movement * ( rtl ? 1 : -1 ) * step );
+		} );
+		next.addEventListener( 'dblclick', () => setWidth( DEFAULT_WIDTH ) );
+		document.body.appendChild( next );
+		return next;
+	};
+
+	const deactivate = ( restorePriorState: boolean ): void => {
+		if ( ! active ) {
+			report();
+			return;
+		}
+		active = false;
+		stopDragging();
+		observer?.disconnect();
+		observer = null;
+		resizeObserver?.disconnect();
+		resizeObserver = null;
+		if ( missingTimer !== null ) {
+			window.clearTimeout( missingTimer );
+			missingTimer = null;
+		}
+		handle?.remove();
+		handle = null;
+		document.body.classList.remove( 'os-editor-sidecar-active' );
+		document.documentElement.classList.remove( 'os-editor-sidecar-active' );
+		if ( restorePriorState && openedBySidecar ) {
+			try {
+				getController()?.close();
+			} catch {
+				/* Store disappeared during navigation. */
+			}
+		}
+		openedBySidecar = false;
+		sidebarSeen = false;
+		report();
+	};
+
+	const syncSidebar = (): void => {
+		if ( ! active ) {
+			return;
+		}
+		const sidebar = document.querySelector< HTMLElement >(
+			'.interface-interface-skeleton__sidebar',
+		);
+		if ( ! sidebar ) {
+			// Once a real sidebar existed, its sustained disappearance means
+			// the user pressed Gutenberg's own Close button. A short grace
+			// period lets React switch plugin sidebars without false-closing.
+			if ( sidebarSeen && missingTimer === null ) {
+				missingTimer = window.setTimeout( () => {
+					missingTimer = null;
+					if (
+						active &&
+						! document.querySelector(
+							'.interface-interface-skeleton__sidebar',
+						)
+					) {
+						deactivate( false );
+					}
+				}, 350 );
+			}
+			return;
+		}
+
+		sidebarSeen = true;
+		if ( missingTimer !== null ) {
+			window.clearTimeout( missingTimer );
+			missingTimer = null;
+		}
+		if ( ! handle ) {
+			handle = createHandle();
+		}
+		resizeObserver?.disconnect();
+		if ( typeof ResizeObserver === 'function' ) {
+			resizeObserver = new ResizeObserver( updateHandleGeometry );
+			resizeObserver.observe( sidebar );
+		}
+		updateHandleGeometry();
+	};
+
+	const activate = (): void => {
+		if ( ! isAvailable() ) {
+			active = false;
+			report( false );
+			return;
+		}
+		if ( active ) {
+			syncSidebar();
+			report( true );
+			return;
+		}
+
+		const controller = getController();
+		if ( ! controller ) {
+			report( false );
+			return;
+		}
+		const currentArea = controller.getActive();
+		openedBySidecar = ! currentArea;
+		active = true;
+		document.body.classList.add( 'os-editor-sidecar-active' );
+		document.documentElement.classList.add( 'os-editor-sidecar-active' );
+		setWidth( width, false );
+		observer = new MutationObserver( syncSidebar );
+		observer.observe( document.body, { childList: true, subtree: true } );
+		if ( ! currentArea ) {
+			controller.open( 'edit-post/document' );
+		}
+		window.setTimeout( syncSidebar, 0 );
+		report( true );
+	};
+
+	window.addEventListener( 'pointermove', onPointerMove );
+	window.addEventListener( 'pointerup', stopDragging );
+	window.addEventListener( 'pointercancel', stopDragging );
+	window.addEventListener( 'resize', () => {
+		if ( active ) {
+			setWidth( width, false );
+			updateHandleGeometry();
+		}
+	} );
+
+	window.addEventListener( 'message', ( event: MessageEvent ) => {
+		if ( event.origin !== origin ) {
+			return;
+		}
+		const data = event.data as { type?: unknown; active?: unknown } | null;
+		if (
+			! data ||
+			data.type !== 'os-editor-sidecar-set' ||
+			typeof data.active !== 'boolean'
+		) {
+			return;
+		}
+		if ( data.active ) {
+			activate();
+		} else {
+			deactivate( true );
+		}
+	} );
+}
+
 ( function() {
 	if ( ! window.parent || window.parent === window ) {
 		// Not in an iframe — bridge has nothing to talk to.
@@ -589,6 +992,7 @@ export function installEditorAutosaveHandler(): void {
 	}
 
 	installEditorAutosaveHandler();
+	installEditorSidecarHandler();
 
 	const w = window as unknown as { wp?: IframeWp };
 	if ( w.wp?.os?.iframe ) {

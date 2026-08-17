@@ -85,6 +85,7 @@ import { startWindowLinksEngine } from './window-links/engine';
 import { startWindowLinkRenderHost } from './window-links/render-host';
 import { bootRelatedEntities } from './related-entities';
 import { bootEditorPreview } from './editor-preview';
+import { bootEditorSidecar } from './editor-sidecar';
 import type {
 	WindowLinkRendererDef,
 	WindowRelationsApi,
@@ -3093,6 +3094,13 @@ function init(): void {
 	// identity's `previewUrl` (see `openstation_window_preview_url()`
 	// in `includes/window-links.php`).
 	bootEditorPreview( { manager } );
+
+	// Gutenberg Editor Sidecar — keeps the editor's ONE real Post /
+	// Block / plugin complementary area visible as a resizable column.
+	// The title-bar button only appears after the iframe's Gutenberg
+	// stores have booted; session-restored editors re-apply the layout
+	// on their next bridge-ready signal.
+	bootEditorSidecar( { manager } );
 
 	// Dock rail renderer sync — loads plugin renderer scripts on
 	// activation so OS Settings → Dock style surfaces them

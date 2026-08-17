@@ -2625,6 +2625,20 @@ wp.hooks.addFilter(
 
 The PHP-side control point is the `openstation_window_preview_url` filter (rewrite or suppress the URL per post — see [hooks-reference](./hooks-reference.md)). Related: `WindowConfig.ephemeral?: boolean` is a general flag — any window opened with it is excluded from session snapshots and never restored on boot.
 
+### The "Editor Sidecar" title-bar button — Experimental
+
+Gutenberg post-editor windows show an **Editor Sidecar** button (columns icon, right side of the title bar, immediately before Preview; registered as `desktop-mode/editor-sidecar`). It appears only after the iframe has booted both the `core/editor` store and a complementary-area store (`core/interface` or the legacy `core/edit-post` store), so Classic Editor and unrelated admin screens never receive a dead control.
+
+The button turns Gutenberg's existing complementary area into a persistent split beside the post canvas. It works with Core's Post and Block settings and with plugin-owned Gutenberg sidebars: any Yoast, Rank Math, ACF, or other plugin surface registered through the normal complementary-area APIs keeps its own React components, data-store subscriptions, controls, and close behavior. Clicking Gutenberg's own sidebar close button also clears the title-bar button's pressed state.
+
+This is deliberately **one editor in one iframe**, not two synchronized editor windows. OpenStation does not start a second Gutenberg instance, which would introduce competing dirty state, undo history, autosaves, post locks, and save requests. It also does not move arbitrary plugin-owned React DOM into a second document: doing so would separate those nodes from the React root and its delegated events, context providers, portals, styles, and document-scoped focus handling. The sidecar is a layout mode applied around the complementary area in the document that already owns it.
+
+The split has a draggable, keyboard-operable divider. Its width defaults to 320px and persists in `localStorage` as `openstation.editorSidecar.width`. Normal desktop bounds are 280–520px; the upper bound also leaves at least 320px for the editor canvas, and a narrow iframe can compress the sidecar to 240px. Arrow keys move the focused divider by 8px (Shift+Arrow by 32px), Home / End select the current minimum / maximum, and double-click restores 320px.
+
+The shell separately persists at most 64 active editor-window ids in `openstation.editorSidecar.activeWindows`. After session restoration or an iframe navigation, it waits for that editor's `os-ready` handshake and reapplies the layout. On desktop viewports at least 960px wide, activating the sidecar also maximizes an editor narrower than 900px once so the canvas and settings both have useful room. The button remains available on smaller viewports, where the iframe-side width cap protects the canvas.
+
+The low-level `os-editor-sidecar-set` / `os-editor-sidecar-state` messages are internal shell-to-editor synchronization primitives, documented in [Bridge protocol](./bridge-protocol.md#editor-sidecar-state--os-editor-sidecar-). Plugin integrations should keep registering ordinary Gutenberg `PluginSidebar` / complementary-area surfaces; they require no OpenStation-specific API.
+
 ### `registerWindowLinkRenderer( def )` — Experimental
 
 Register (or replace) a **window-link renderer** — how the relation ties between related windows are drawn. The built-in `svg-splines` (curved connectors terminated by circular dots on a `pointer-events: none` layer *behind* the windows: the larger dot marks a child's root, both ends large for mutual references — circles are rotation-invariant, so ties look right at any approach angle) registers through this same hook. The user picks the active renderer in **OS Settings → Effects → Window links**; only one renderer is mounted at a time.
@@ -3583,6 +3597,14 @@ Reports which screen-meta panel (if any) is currently open inside the iframe.
 { type: 'os-screen-meta-state'; open: 'screen-options' | 'help' | null }
 ```
 
+#### `os-editor-sidecar-state` — Experimental
+
+Reports the effective state of Gutenberg's existing complementary area after an [`os-editor-sidecar-set`](#os-editor-sidecar-set--experimental) request or Gutenberg's own close action. The parent uses `active` and `available` to keep the title-bar button and persisted active-window set synchronized with the editor that owns the real UI; `width` records the current clamped width for diagnostics. `available: false` means the page does not currently expose a compatible Gutenberg complementary area.
+
+```typescript
+{ type: 'os-editor-sidecar-state'; active: boolean; available: boolean; width: number }
+```
+
 #### `os-commands-list` — Experimental
 Reports the current `wp.data.select('core/commands')` registry of this iframe to the parent shell. Emitted after the iframe receives `os-commands-subscribe`, and then re-emitted (de-duplicated) whenever a re-render of the in-iframe React harvester changes the merged list. The parent re-publishes each entry as a slash-command in the shell palette tagged `owner: 'iframe:<windowId>'` and `eager: true` so the command surfaces before the user types `/`.
 
@@ -3693,6 +3715,14 @@ Asks the iframe to toggle a named screen-meta panel. The iframe is the authority
 
 ```typescript
 { type: 'os-toggle-panel'; panel: 'screen-options' | 'help' }
+```
+
+#### `os-editor-sidecar-set` — Experimental
+
+Enables or disables the Editor Sidecar layout in a Gutenberg post-editor iframe. The iframe applies the layout to its existing complementary area and answers with [`os-editor-sidecar-state`](#os-editor-sidecar-state--experimental). The message is idempotent; pages without the required Gutenberg stores and DOM answer with `active: false, available: false`.
+
+```typescript
+{ type: 'os-editor-sidecar-set'; active: boolean }
 ```
 
 #### `os-commands-subscribe` — Experimental

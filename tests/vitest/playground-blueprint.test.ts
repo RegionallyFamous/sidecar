@@ -72,7 +72,7 @@ describe( 'public Playground Blueprint', () => {
 		const install = BLUEPRINT.steps[ 1 ];
 		expect( install.pluginData ).toEqual( {
 			resource: 'url',
-			url: 'https://github.com/WordPress/openstation/releases/latest/download/openstation.zip',
+			url: 'https://github.com/RegionallyFamous/sidecar/releases/latest/download/openstation.zip',
 		} );
 		expect( install.options ).toEqual( { activate: true } );
 	} );
