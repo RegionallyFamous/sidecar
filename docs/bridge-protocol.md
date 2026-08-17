@@ -189,6 +189,32 @@ Every other completed round-trip — forced or core's own — announces `os-edit
 
 The watch dies with the page (it's plain JS in the iframe), so the shell **re-arms it under a fresh `watchId` on every readiness re-announcement** while the pairing holds — the classic editor reloads on every manual save, and without the re-arm the typing-driven refresh would be permanently dead from that point. The previous `watchId` is unwatched first, so a readiness re-announcement without a real reload never stacks two watches.
 
+### Editor Sidecar state — `os-editor-sidecar-*`
+
+The Editor Sidecar is a compound layout inside the existing Gutenberg iframe. The shell owns its title-bar affordance and restored-window policy; the iframe owns the complementary area, divider, width, and Gutenberg state. This split keeps one `core/editor` store, one block-editor store, one undo history, and one autosave lifecycle.
+
+| Type | Direction | Carries | Purpose |
+|---|---|---|---|
+| `os-editor-sidecar-set` | parent → iframe | `{ active: boolean }` | Enable or disable the split around Gutenberg's existing complementary area. Idempotent; pages without the required editor stores ignore it and report unavailable state. |
+| `os-editor-sidecar-state` | iframe → parent | `{ active: boolean, available: boolean, width: number }` | Report the effective layout after a set request or Gutenberg closing its own sidebar. The shell uses `active` / `available` to synchronize the title-bar button and persisted active-window ids; `width` exposes the current clamped width for diagnostics. |
+
+Lifecycle:
+
+1. After Gutenberg boots, the shell's capability probe finds `core/editor` plus `core/interface` or `core/edit-post`, then paints the **Editor Sidecar** title-bar button. Classic Editor and non-editor pages do not match.
+2. Clicking the button updates the shell's active-editor set and posts `os-editor-sidecar-set`. A narrow editor is maximized once when the desktop is wide enough for a useful split.
+3. The iframe applies the layout to the complementary area that Gutenberg already rendered. Its divider changes the sidecar width and persists it as `openstation.editorSidecar.width` in local storage. Width starts at 320px, normally clamps to 280–520px, and is further capped to leave at least 320px of editor canvas (with a 240px floor when the whole iframe is narrow). The separator supports pointer dragging, Arrow / Shift+Arrow, Home / End, and a double-click reset.
+4. The iframe posts `os-editor-sidecar-state`; if Gutenberg's own close control closed the complementary area, the shell clears its active state and repaints the title-bar button.
+5. A session-restored editor gets a new iframe document. The shell waits for that document's `os-ready` message, re-runs the Gutenberg capability probe, and only then reapplies the persisted active state. The same path handles in-place editor navigations and reloads without racing the new listener.
+
+The protocol intentionally never transports block content, editor state, or rendered sidebar markup. Starting a second Gutenberg instance would create two writers for dirty state, post locks, autosaves, and saves. Moving arbitrary React nodes into another document is not a safe shortcut either: plugin sidebars depend on their original React root, delegated event system, context providers, portals, styles, and document-scoped focus behavior. Keeping the existing complementary area in its owning document lets normal `PluginSidebar` integrations work without OpenStation-specific adapters.
+
+Internal DOM sniff points while the split is active:
+
+- `html.os-editor-sidecar-active` and `body.os-editor-sidecar-active` gate the layout CSS.
+- `--os-editor-sidecar-width` on `<html>` carries the clamped pixel width.
+- `.os-editor-sidecar-resizer` is the injected `role="separator"` handle; `body.os-editor-sidecar-resizing` marks an active pointer drag.
+- `openstation.editorSidecar.activeWindows` in the parent shell's local storage carries at most 64 ids. It is preference state, not a second session snapshot; `IFRAME_READY` is what reconnects it to restored windows.
+
 ### Session re-auth nudge — `os-reauth-detected`
 
 Every chromeless iframe runs its own Heartbeat, and each heartbeat response carries core's `wp-auth-check` boolean (attached server-side, independent of whether the modal JS is loaded — chromeless iframes have the modal suppressed so the parent shell owns the single login prompt). When an iframe's heartbeat sees the flag flip `false → true` — the user re-authenticated somewhere — the bridge nudges the parent before reloading itself, so the shell's recovery (`src/auth-recovery/index.ts`) starts immediately instead of waiting out the parent's own heartbeat schedule.
