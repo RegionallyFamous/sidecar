@@ -461,12 +461,12 @@ html.wp-toolbar:has( body.os-chromeless ) {
 }
 
 /* ---------------------------------------------------------------
- * Gutenberg Editor Sidecar
+ * Gutenberg Sidebar Window
  *
- * The title-bar Sidecar button adds `os-editor-sidecar-active` from
+ * The title-bar Sidebar Window button adds `os-editor-sidecar-active` from
  * the iframe bridge. Gutenberg keeps rendering its ONE real
- * complementary-area React tree; these rules only promote that area
- * into a stable, resizable column. This is intentionally active below
+ * complementary-area React tree; these rules frame that area as a
+ * stable, resizable attached window. This is intentionally active below
  * Gutenberg's 782px desktop breakpoint too — an OpenStation window is
  * often narrower than the browser even when the desktop itself has
  * plenty of room, and Gutenberg would otherwise turn the sidebar into
@@ -474,13 +474,15 @@ html.wp-toolbar:has( body.os-chromeless ) {
  *
  * Inline widths on `.interface-complementary-area__fill > div` come
  * from Gutenberg's motion component (`100vw` at its mobile
- * breakpoint), so every level of the fill chain must read the sidecar
- * width. The bridge clamps `--os-editor-sidecar-width` against the
- * live iframe viewport before writing it.
+ * breakpoint), so every level of the fill chain is forced to the
+ * bordered frame's inner width. The bridge clamps
+ * `--os-editor-sidecar-width` against the live iframe viewport before
+ * writing the frame's border-box width.
  * --------------------------------------------------------------- */
 .os-chromeless.os-editor-sidecar-active
 	.interface-interface-skeleton__body {
 	overflow: hidden;
+	background: var( --os-ui-bg, #f0f0f1 );
 }
 
 .os-chromeless.os-editor-sidecar-active
@@ -493,12 +495,25 @@ html.wp-toolbar:has( body.os-chromeless ) {
 	.interface-interface-skeleton__sidebar {
 	position: relative !important;
 	inset: auto !important;
+	display: flex !important;
+	align-self: stretch;
+	flex-direction: column;
 	flex: 0 0 var( --os-editor-sidecar-width, 320px ) !important;
 	width: var( --os-editor-sidecar-width, 320px ) !important;
 	min-width: var( --os-editor-sidecar-width, 320px ) !important;
 	max-width: var( --os-editor-sidecar-width, 320px ) !important;
-	border-top: 0;
-	box-shadow: -1px 0 0 0 rgba( 0, 0, 0, 0.133 );
+	height: auto !important;
+	min-height: 0;
+	margin-block: 10px;
+	margin-inline: 12px 10px;
+	box-sizing: border-box;
+	overflow: hidden;
+	border: 1px solid var( --os-ui-border, #c3c4c7 );
+	border-radius: 8px;
+	background: var( --os-ui-surface, #fff );
+	box-shadow:
+		0 1px 2px rgba( 0, 0, 0, 0.08 ),
+		0 8px 24px rgba( 0, 0, 0, 0.12 );
 	z-index: 25;
 }
 
@@ -512,15 +527,88 @@ html.wp-toolbar:has( body.os-chromeless ) {
 .os-chromeless.os-editor-sidecar-active
 	.interface-interface-skeleton__sidebar
 	.interface-complementary-area {
-	width: var( --os-editor-sidecar-width, 320px ) !important;
-	min-width: var( --os-editor-sidecar-width, 320px ) !important;
-	max-width: var( --os-editor-sidecar-width, 320px ) !important;
+	width: 100% !important;
+	min-width: 100% !important;
+	max-width: 100% !important;
+	min-height: 0;
 }
 
-html[ dir='rtl' ]
-	.os-chromeless.os-editor-sidecar-active
-	.interface-interface-skeleton__sidebar {
-	box-shadow: 1px 0 0 0 rgba( 0, 0, 0, 0.133 );
+.os-chromeless.os-editor-sidecar-active
+	.interface-interface-skeleton__sidebar
+	.interface-complementary-area__fill {
+	flex: 1 1 auto;
+	height: auto !important;
+	overflow: hidden;
+}
+
+/* A small, deliberately OS-like strip makes it unambiguous that the
+ * complementary area is an attached companion window rather than a
+ * mode change inside the post canvas. The bridge injects this as the
+ * sidebar's first child and removes it when Sidebar Window is switched off. */
+.os-chromeless .os-editor-sidecar-window-chrome {
+	display: flex;
+	align-items: center;
+	flex: 0 0 32px;
+	gap: 8px;
+	width: 100%;
+	height: 32px;
+	min-height: 32px;
+	padding-block: 0;
+	padding-inline: 10px 4px;
+	box-sizing: border-box;
+	border-bottom: 1px solid var( --os-ui-border, #dcdcde );
+	background: var( --os-ui-surface-subtle, #f6f7f7 );
+	color: var( --os-ui-fg, #1d2327 );
+	user-select: none;
+}
+
+.os-chromeless .os-editor-sidecar-window-title {
+	min-width: 0;
+	margin: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+	text-align: start;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.os-chromeless .os-editor-sidecar-window-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 24px;
+	width: 24px;
+	height: 24px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var( --os-ui-fg-muted, #50575e );
+	font: inherit;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+	appearance: none;
+}
+
+.os-chromeless .os-editor-sidecar-window-close:hover {
+	background: var( --os-ui-hover, #dcdcde );
+	color: var( --os-ui-fg, #1d2327 );
+}
+
+.os-chromeless .os-editor-sidecar-window-close svg {
+	width: 16px;
+	height: 16px;
+	pointer-events: none;
+}
+
+.os-chromeless .os-editor-sidecar-window-close:focus-visible {
+	outline: 2px solid var( --wp-admin-theme-color, #2271b1 );
+	outline-offset: 1px;
 }
 
 /* The bridge positions this fixed separator over the sidebar's live
@@ -562,6 +650,18 @@ html[ dir='rtl' ]
 .os-chromeless.os-editor-sidecar-resizing * {
 	cursor: col-resize !important;
 	user-select: none !important;
+}
+
+@media ( max-width: 640px ) {
+	.os-chromeless.os-editor-sidecar-active
+		.interface-interface-skeleton__sidebar {
+		margin-block: 6px;
+		margin-inline: 7px 6px;
+		border-radius: 6px;
+		box-shadow:
+			0 1px 2px rgba( 0, 0, 0, 0.08 ),
+			0 4px 12px rgba( 0, 0, 0, 0.1 );
+	}
 }
 
 /* ---------------------------------------------------------------

@@ -878,10 +878,10 @@ export function installEditorAutosaveHandler(): void {
 }
 
 /**
- * Install the iframe half of Gutenberg's Editor Sidecar.
+ * Install the iframe half of Gutenberg's Sidebar Window.
  *
- * The sidecar is deliberately a layout mode of the existing editor,
- * not a second editor document. Gutenberg and plugin sidebars are
+ * Sidebar Window is deliberately attached chrome around the existing
+ * editor sidebar, not a second document. Gutenberg and plugin sidebars are
  * React SlotFills tied to this window's data registry; copying their
  * DOM elsewhere would break delegated events, while loading the post
  * twice would create competing dirty state and autosaves.
@@ -892,8 +892,8 @@ export function installEditorAutosaveHandler(): void {
  * Iframe → parent:
  *  - `os-editor-sidecar-state` `{ active, available, width }`
  *
- * The CSS class only changes geometry. The sidebar's original React
- * tree remains mounted and interactive inside this document.
+ * The injected title bar and CSS only add presentation and geometry.
+ * The sidebar's original React tree remains mounted and interactive here.
  */
 export function installEditorSidecarHandler(): void {
 	const flagged = window as unknown as {
@@ -996,9 +996,15 @@ export function installEditorSidecarHandler(): void {
 	};
 
 	const widthBounds = (): { min: number; max: number } => {
+		// The frame's logical margins live outside its border-box width.
+		// Account for both so the editor-width guarantee remains exact.
+		const frameOuterMargin = window.innerWidth <= 640 ? 13 : 22;
 		const max = Math.max(
 			240,
-			Math.min( ABSOLUTE_MAX_WIDTH, window.innerWidth - MIN_EDITOR_WIDTH ),
+			Math.min(
+				ABSOLUTE_MAX_WIDTH,
+				window.innerWidth - MIN_EDITOR_WIDTH - frameOuterMargin,
+			),
 		);
 		return { min: Math.min( DESKTOP_MIN_WIDTH, max ), max };
 	};
@@ -1019,12 +1025,12 @@ export function installEditorSidecarHandler(): void {
 
 	let width = readWidth();
 	let active = false;
-	let openedBySidecar = false;
 	let sidebarSeen = false;
 	let observer: MutationObserver | null = null;
 	let resizeObserver: ResizeObserver | null = null;
 	let missingTimer: number | null = null;
 	let handle: HTMLDivElement | null = null;
+	let windowChrome: HTMLDivElement | null = null;
 	let dragging = false;
 	let dragStartX = 0;
 	let dragStartWidth = 0;
@@ -1045,8 +1051,8 @@ export function installEditorSidecarHandler(): void {
 		}
 	};
 
-	const updateHandleGeometry = (): void => {
-		if ( ! active || ! handle ) {
+	const updateWindowGeometry = (): void => {
+		if ( ! active ) {
 			return;
 		}
 		const sidebar = document.querySelector< HTMLElement >(
@@ -1056,15 +1062,18 @@ export function installEditorSidecarHandler(): void {
 			return;
 		}
 		const rect = sidebar.getBoundingClientRect();
-		const rtl = window.getComputedStyle( document.documentElement ).direction === 'rtl';
-		const edge = rtl ? rect.right : rect.left;
-		handle.style.left = `${ Math.round( edge - 4 ) }px`;
-		handle.style.top = `${ Math.round( rect.top ) }px`;
-		handle.style.height = `${ Math.round( rect.height ) }px`;
-		const { min, max } = widthBounds();
-		handle.setAttribute( 'aria-valuemin', String( min ) );
-		handle.setAttribute( 'aria-valuemax', String( max ) );
-		handle.setAttribute( 'aria-valuenow', String( width ) );
+		if ( handle ) {
+			const rtl =
+				window.getComputedStyle( document.documentElement ).direction === 'rtl';
+			const edge = rtl ? rect.right : rect.left;
+			handle.style.left = `${ Math.round( edge - 4 ) }px`;
+			handle.style.top = `${ Math.round( rect.top ) }px`;
+			handle.style.height = `${ Math.round( rect.height ) }px`;
+			const { min, max } = widthBounds();
+			handle.setAttribute( 'aria-valuemin', String( min ) );
+			handle.setAttribute( 'aria-valuemax', String( max ) );
+			handle.setAttribute( 'aria-valuenow', String( width ) );
+		}
 	};
 
 	const setWidth = ( next: number, persist = true ): void => {
@@ -1080,7 +1089,7 @@ export function installEditorSidecarHandler(): void {
 				/* localStorage blocked — keep the in-page width. */
 			}
 		}
-		window.requestAnimationFrame( updateHandleGeometry );
+		window.requestAnimationFrame( updateWindowGeometry );
 	};
 
 	const stopDragging = (): void => {
@@ -1106,8 +1115,8 @@ export function installEditorSidecarHandler(): void {
 		next.tabIndex = 0;
 		next.setAttribute( 'role', 'separator' );
 		next.setAttribute( 'aria-orientation', 'vertical' );
-		next.setAttribute( 'aria-label', 'Resize editor sidecar' );
-		next.title = 'Drag to resize the editor sidecar';
+		next.setAttribute( 'aria-label', 'Resize Sidebar Window' );
+		next.title = 'Drag to resize Sidebar Window';
 		next.addEventListener( 'pointerdown', ( event: PointerEvent ) => {
 			if ( event.button !== 0 ) {
 				return;
@@ -1144,7 +1153,33 @@ export function installEditorSidecarHandler(): void {
 		return next;
 	};
 
-	const deactivate = ( restorePriorState: boolean ): void => {
+	const createWindowChrome = ( sidebar: HTMLElement ): HTMLDivElement => {
+		const chrome = document.createElement( 'div' );
+		chrome.className = 'os-editor-sidecar-window-chrome';
+		chrome.setAttribute( 'role', 'toolbar' );
+		chrome.setAttribute( 'aria-label', 'Sidebar Window controls' );
+
+		const title = document.createElement( 'span' );
+		title.className = 'os-editor-sidecar-window-title';
+		title.textContent = 'Sidebar Window';
+
+		const close = document.createElement( 'button' );
+		close.className = 'os-editor-sidecar-window-close';
+		close.type = 'button';
+		close.setAttribute( 'aria-label', 'Close Sidebar Window' );
+		close.title = 'Close Sidebar Window';
+		close.textContent = '\u00d7';
+		close.addEventListener( 'click', ( event ) => {
+			event.stopPropagation();
+			deactivate( true );
+		} );
+
+		chrome.append( title, close );
+		sidebar.prepend( chrome );
+		return chrome;
+	};
+
+	const deactivate = ( closeSidebar: boolean ): void => {
 		if ( ! active ) {
 			report();
 			return;
@@ -1161,16 +1196,17 @@ export function installEditorSidecarHandler(): void {
 		}
 		handle?.remove();
 		handle = null;
+		windowChrome?.remove();
+		windowChrome = null;
 		document.body.classList.remove( 'os-editor-sidecar-active' );
 		document.documentElement.classList.remove( 'os-editor-sidecar-active' );
-		if ( restorePriorState && openedBySidecar ) {
+		if ( closeSidebar ) {
 			try {
 				getController()?.close();
 			} catch {
 				/* Store disappeared during navigation. */
 			}
 		}
-		openedBySidecar = false;
 		sidebarSeen = false;
 		report();
 	};
@@ -1210,12 +1246,16 @@ export function installEditorSidecarHandler(): void {
 		if ( ! handle ) {
 			handle = createHandle();
 		}
+		if ( ! windowChrome?.isConnected ) {
+			windowChrome?.remove();
+			windowChrome = createWindowChrome( sidebar );
+		}
 		resizeObserver?.disconnect();
 		if ( typeof ResizeObserver === 'function' ) {
-			resizeObserver = new ResizeObserver( updateHandleGeometry );
+			resizeObserver = new ResizeObserver( updateWindowGeometry );
 			resizeObserver.observe( sidebar );
 		}
-		updateHandleGeometry();
+		updateWindowGeometry();
 	};
 
 	const activate = (): void => {
@@ -1236,7 +1276,6 @@ export function installEditorSidecarHandler(): void {
 			return;
 		}
 		const currentArea = controller.getActive();
-		openedBySidecar = ! currentArea;
 		active = true;
 		document.body.classList.add( 'os-editor-sidecar-active' );
 		document.documentElement.classList.add( 'os-editor-sidecar-active' );
@@ -1256,7 +1295,7 @@ export function installEditorSidecarHandler(): void {
 	window.addEventListener( 'resize', () => {
 		if ( active ) {
 			setWidth( width, false );
-			updateHandleGeometry();
+			updateWindowGeometry();
 		}
 	} );
 

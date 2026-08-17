@@ -1,5 +1,5 @@
 /**
- * Parent-shell tests for the Gutenberg Editor Sidecar.
+ * Parent-shell tests for Gutenberg's Sidebar Window.
  *
  * The shell owns discovery, persistence, window sizing, and the
  * postMessage lifecycle. Gutenberg's sidebar DOM remains in the
@@ -158,7 +158,7 @@ describe( 'bootEditorSidecar', () => {
 		const { def } = await boot();
 
 		expect( def ).toBeDefined();
-		expect( def.label ).toBe( 'Editor Sidecar' );
+		expect( def.label ).toBe( 'Sidebar Window' );
 		expect( def.icon ).toBe( 'dashicons-columns' );
 		expect( def.placement ).toBe( 'right' );
 		expect( def.order ).toBe( 54 );

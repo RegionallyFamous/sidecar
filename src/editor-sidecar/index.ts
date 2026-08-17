@@ -1,20 +1,20 @@
 /**
- * OpenStation — Gutenberg Editor Sidecar.
+ * OpenStation — Gutenberg Sidebar Window.
  *
  * Gutenberg's complementary area (Post, Block, and plugin-owned
  * sidebars such as Yoast / Rank Math / ACF) belongs to the editor's
  * React tree. Moving it into a second document would sever React's
  * event delegation; opening a second editor would create competing
- * dirty state and autosaves. The sidecar therefore stays inside the
- * ONE real editor iframe and asks its iframe-side bridge to switch the
- * existing complementary area into a persistent, resizable split.
+ * dirty state and autosaves. Sidebar Window therefore stays inside the
+ * ONE real editor iframe and asks its iframe-side bridge to frame the
+ * existing complementary area as a persistent, resizable attached window.
  *
  * The shell owns only policy and lifecycle:
  *  - a title-bar button appears after Gutenberg has actually booted;
  *  - activating it sends `os-editor-sidecar-set` to that iframe;
  *  - narrow floating/snapped editors maximize once to make useful room;
  *  - active editor ids persist so session-restored windows re-apply the
- *    split after their iframe announces readiness.
+ *    attached window after their iframe announces readiness.
  *
  * The iframe-side DOM/CSS work lives in
  * `installEditorSidecarHandler()` and `assets/css/chromeless.css`.
@@ -139,7 +139,7 @@ function postSidecarState(
 	}
 }
 
-/** Give the compound editor enough width to remain a useful split. */
+/** Give the editor and attached Sidebar Window enough useful width. */
 function makeRoomForSidecar( win: EditorSidecarWindowLike ): void {
 	const element = win.element;
 	if ( ! element || typeof win.maximize !== 'function' ) {
@@ -227,7 +227,7 @@ export function bootEditorSidecar( {
 
 	registerTitleBarButton( {
 		id: 'desktop-mode/editor-sidecar',
-		label: __( 'Editor Sidecar' ),
+		label: __( 'Sidebar Window' ),
 		icon: 'dashicons-columns',
 		placement: 'right',
 		order: 54, // Immediately before Preview (55) and Related (60).
@@ -243,7 +243,7 @@ export function bootEditorSidecar( {
 	} );
 
 	// A restored or navigated iframe gets a fresh document. Re-apply the
-	// persisted split only after its bridge says every listener is wired.
+	// persisted attached window only after its bridge says every listener is wired.
 	addAction(
 		HOOKS.IFRAME_READY,
 		'desktop-mode/editor-sidecar',

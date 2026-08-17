@@ -1,5 +1,5 @@
 /**
- * Iframe-side tests for Gutenberg's Editor Sidecar handler.
+ * Iframe-side tests for Gutenberg's Sidebar Window handler.
  *
  * These exercise the compound-editor contract: the existing
  * complementary area stays in the one Gutenberg document, while the
@@ -121,6 +121,15 @@ async function handle(): Promise< HTMLElement > {
 	return document.querySelector( '.os-editor-sidecar-resizer' )!;
 }
 
+async function attachedChrome(): Promise< HTMLElement > {
+	await vi.waitFor( () => {
+		if ( ! document.querySelector( '.os-editor-sidecar-window-chrome' ) ) {
+			throw new Error( 'attached sidebar window chrome not mounted yet' );
+		}
+	} );
+	return document.querySelector( '.os-editor-sidecar-window-chrome' )!;
+}
+
 beforeEach( () => {
 	// The production installer intentionally has page-lifetime state and
 	// deduplicates itself. Keep one listener for this jsdom document and
@@ -173,15 +182,22 @@ describe( 'installEditorSidecarHandler', () => {
 		).toBe( false );
 	} );
 
-	test( 'opens Gutenberg document settings and applies one-document split classes', () => {
+	test( 'opens Gutenberg document settings and mounts attached window chrome', async () => {
 		const gutenberg = installGutenberg();
-		addEditorDom( false );
+		addEditorDom();
 
 		sendSet( true );
+		const chrome = await attachedChrome();
+		const close = chrome.querySelector< HTMLButtonElement >( 'button' );
 
 		expect( gutenberg.enable ).toHaveBeenCalledWith(
 			'core',
 			'edit-post/document',
+		);
+		expect( chrome.textContent ).toContain( 'Sidebar Window' );
+		expect( close ).not.toBeNull();
+		expect( close!.getAttribute( 'aria-label' ) ).toBe(
+			'Close Sidebar Window',
 		);
 		expect( document.body.classList.contains( 'os-editor-sidecar-active' ) ).toBe(
 			true,
@@ -204,7 +220,7 @@ describe( 'installEditorSidecarHandler', () => {
 		} );
 	} );
 
-	test( 'preserves a plugin-owned active sidebar when toggled off', () => {
+	test( 'explicit deactivation closes an already-active plugin sidebar', () => {
 		const gutenberg = installGutenberg( 'yoast-seo/sidebar' );
 		addEditorDom();
 
@@ -212,7 +228,49 @@ describe( 'installEditorSidecarHandler', () => {
 		sendSet( false );
 
 		expect( gutenberg.enable ).not.toHaveBeenCalled();
-		expect( gutenberg.disable ).not.toHaveBeenCalled();
+		expect( gutenberg.disable ).toHaveBeenCalledWith( 'core' );
+		expect( gutenberg.activeArea ).toBeNull();
+		expect( lastState() ).toMatchObject( {
+			active: false,
+			available: true,
+		} );
+	} );
+
+	test( 'attached chrome close tears down the window and reports inactive', async () => {
+		const gutenberg = installGutenberg( 'yoast-seo/sidebar' );
+		addEditorDom();
+		sendSet( true );
+		const chrome = await attachedChrome();
+		const resizer = await handle();
+		resizer.dispatchEvent(
+			new MouseEvent( 'pointerdown', {
+				bubbles: true,
+				button: 0,
+				clientX: 860,
+			} ),
+		);
+		expect(
+			document.body.classList.contains( 'os-editor-sidecar-resizing' ),
+		).toBe( true );
+
+		chrome.querySelector< HTMLButtonElement >( 'button' )!.click();
+
+		expect( gutenberg.disable ).toHaveBeenCalledWith( 'core' );
+		expect(
+			document.querySelector( '.os-editor-sidecar-window-chrome' ),
+		).toBeNull();
+		expect( document.querySelector( '.os-editor-sidecar-resizer' ) ).toBeNull();
+		expect( document.body.classList.contains( 'os-editor-sidecar-active' ) ).toBe(
+			false,
+		);
+		expect(
+			document.documentElement.classList.contains(
+				'os-editor-sidecar-active',
+			),
+		).toBe( false );
+		expect(
+			document.body.classList.contains( 'os-editor-sidecar-resizing' ),
+		).toBe( false );
 		expect( lastState() ).toMatchObject( {
 			active: false,
 			available: true,
@@ -283,6 +341,9 @@ describe( 'installEditorSidecarHandler', () => {
 		await vi.advanceTimersByTimeAsync( 350 );
 
 		expect( document.querySelector( '.os-editor-sidecar-resizer' ) ).toBeNull();
+		expect(
+			document.querySelector( '.os-editor-sidecar-window-chrome' ),
+		).toBeNull();
 		expect( document.body.classList.contains( 'os-editor-sidecar-active' ) ).toBe(
 			false,
 		);
