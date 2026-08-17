@@ -134,18 +134,18 @@ Core does not register `theme-install.php` as a submenu of `themes.php` — clas
 
 Resulting tab order: Appearance | Add Theme | Editor | Fonts | …
 
-## The editor side: Gutenberg's complementary area
+## The editor side: attached Sidebar Window
 
-The **Editor Sidecar** is the broad compatibility path for plugins that already integrate with Gutenberg's Post / Block sidebar system. It is not a per-plugin shim: the title-bar button asks the existing Gutenberg iframe to keep its current complementary area open beside the post canvas, so a normal plugin sidebar receives the same React tree, data stores, events, focus handling, and CSS it receives in classic wp-admin.
+The **Sidebar Window** is the broad compatibility path for plugins that already integrate with Gutenberg's Post / Block sidebar system. It is not a per-plugin shim: the outer title-bar button asks the existing Gutenberg iframe to present its current complementary area as a visibly attached window beside the post canvas. The attached UI has its own compact title bar and close control, a border and clear gap from the canvas, and a resizer, while a normal plugin sidebar keeps the same React tree, data stores, events, focus handling, and CSS it receives in classic wp-admin.
 
-This makes the feature a compatibility multiplier for any Yoast, Rank Math, ACF, or other plugin surface registered as a Gutenberg sidebar. Those controls stay visible while the author edits the post, and switching among Post, Block, and plugin panels remains Gutenberg's responsibility. Plugin authors do not register with OpenStation and should not detect the sidecar; they continue using Gutenberg's `PluginSidebar` and complementary-area APIs.
+This makes the feature a compatibility multiplier for any Yoast, Rank Math, ACF, or other plugin surface registered as a Gutenberg sidebar. Those controls stay visible in the attached window while the author edits the post, and switching among Post, Block, and plugin panels remains Gutenberg's responsibility. Plugin authors do not register with OpenStation and should not detect the attached chrome; they continue using Gutenberg's `PluginSidebar` and complementary-area APIs.
 
 The architecture has two non-negotiable boundaries:
 
 1. **One Gutenberg instance.** A second editor pointed at the same post would have its own dirty flag, undo stack, autosave timer, post lock, and save lifecycle. Trying to synchronize two instances would create conflicts rather than a side-by-side workspace.
 2. **No arbitrary React DOM adoption into another document.** Moving a sidebar node to a shell-owned panel would detach it from assumptions made by the owning React root: delegated events, contexts, portals, stylesheets, owner-document queries, focus traps, and measurement APIs. A panel that looks intact can still be functionally broken.
 
-The sidecar therefore changes layout only inside the editor document that owns the sidebar. The divider is resizable (pointer and keyboard) and its width persists locally. The shell persists which editor window ids are active and reapplies them only after a restored or navigated iframe announces `os-ready`; Gutenberg's own sidebar close control reports back so the title-bar button follows the real state. See [`bridge-protocol.md`](./bridge-protocol.md#editor-sidecar-state--os-editor-sidecar-) for the internal `os-editor-sidecar-set` / `os-editor-sidecar-state` exchange.
+Sidebar Window therefore adds its frame chrome only inside the editor document that owns the real sidebar; it does not adopt the plugin's React DOM into the shell or another iframe. The attached window is resizable (pointer and keyboard), its width persists locally, and its own title-bar close control reports back so the outer button follows the real state. The shell persists which editor window ids are active and rebuilds the chrome only after a restored or navigated iframe announces `os-ready`. See [`bridge-protocol.md`](./bridge-protocol.md#sidebar-window-state--os-editor-sidecar-) for the internal `os-editor-sidecar-set` / `os-editor-sidecar-state` exchange.
 
 ## The script side: dependency repairs
 
@@ -507,7 +507,7 @@ Decision tree, in order:
 3. **Is the offending CSS rule selector-targetable and self-contained?** → Tier 3 — write a scoped CSS override in `chromeless.css`. Follow the docblock template above.
 4. **Is the breakage in menu data, not CSS?** → Add a dock-side adaptation in `includes/core/payload.php` and a PHPUnit test under `tests/phpunit/tests/openStationBuildDockItems.php` (or `openStationMenuItemUrl.php` if it's a URL-builder issue).
 5. **Is a block-editor script crashing at module load because of a missing `wp_enqueue_script()` dep?** → Add a registration-mutation shim under `includes/compat/<plugin>.php` and a PHPUnit test that pins the shape. Follow `includes/compat/divi.php` as the template.
-6. **Does the plugin already register a Gutenberg sidebar that works in classic wp-admin?** → Verify it in the Editor Sidecar before writing a bespoke integration. The sidecar keeps the plugin's own surface in its owning editor document.
+6. **Does the plugin already register a Gutenberg sidebar that works in classic wp-admin?** → Verify it in Sidebar Window before writing a bespoke integration. The attached chrome keeps the plugin's own surface in its owning editor document.
 7. **Is a plugin's content shaped wrong in the site window** — an empty folder, a useless preview, a label that doesn't fit? → Add an integration under `includes/my-wordpress/integrations/<plugin>.php`, gated on the plugin being active, and drive the UI through the site window's public filters and actions rather than special-casing the window's own code. `woocommerce.php` is the template.
 8. **Is it none of the above?** Open an issue. Don't escalate to broad fixes (`overflow: hidden` on body, JS-rewriting stylesheets, etc.) without a discussion — those tend to break more than they fix.
 
