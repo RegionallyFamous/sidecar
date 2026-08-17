@@ -28,6 +28,8 @@ import { registerTitleBarButton } from '../title-bar-buttons/registry';
 /** Persisted per-post window ids; capped defensively on write. */
 const ACTIVE_STORAGE_KEY = 'openstation.editorSidecar.activeWindows';
 const MAX_PERSISTED_IDS = 64;
+const GUTENBERG_PROBE_INTERVAL_MS = 250;
+const GUTENBERG_PROBE_ATTEMPTS = 40;
 
 interface EditorSidecarWindowLike {
 	id: string;
@@ -193,6 +195,36 @@ export function bootEditorSidecar( {
 }: {
 	manager: EditorSidecarManager;
 } ): void {
+	const readinessProbes = new Map< string, number >();
+
+	const probeGutenbergReadiness = (
+		windowId: string,
+		attempt = 0,
+	): void => {
+		const win = manager.getById( windowId );
+		if ( ! win ) {
+			readinessProbes.delete( windowId );
+			return;
+		}
+		if ( isGutenbergEditor( win ) ) {
+			readinessProbes.delete( windowId );
+			if ( store.state.activeEditors.has( win.id ) ) {
+				postSidecarState( win, true );
+			}
+			win.renderCustomTitleBarButtons?.();
+			return;
+		}
+		if ( attempt >= GUTENBERG_PROBE_ATTEMPTS ) {
+			readinessProbes.delete( windowId );
+			return;
+		}
+		const timer = window.setTimeout( () => {
+			readinessProbes.delete( windowId );
+			probeGutenbergReadiness( windowId, attempt + 1 );
+		}, GUTENBERG_PROBE_INTERVAL_MS );
+		readinessProbes.set( windowId, timer );
+	};
+
 	registerTitleBarButton( {
 		id: 'desktop-mode/editor-sidecar',
 		label: __( 'Editor Sidecar' ),
@@ -223,10 +255,17 @@ export function bootEditorSidecar( {
 			if ( ! win ) {
 				return;
 			}
-			if ( store.state.activeEditors.has( win.id ) && isGutenbergEditor( win ) ) {
-				postSidecarState( win, true );
+			const existingProbe = readinessProbes.get( win.id );
+			if ( existingProbe !== undefined ) {
+				window.clearTimeout( existingProbe );
+				readinessProbes.delete( win.id );
 			}
+			// The standalone bridge can announce readiness before Gutenberg's
+			// React tree and data stores mount. Repaint immediately to remove
+			// stale controls after navigation, then probe until the editor is
+			// actually capable of hosting the sidecar.
 			win.renderCustomTitleBarButtons?.();
+			probeGutenbergReadiness( win.id );
 		},
 	);
 

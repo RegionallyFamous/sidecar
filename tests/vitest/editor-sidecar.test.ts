@@ -148,6 +148,7 @@ afterEach( () => {
 	clearHooksStub();
 	window.localStorage.clear();
 	_resetAllSharedStoresForTests();
+	vi.useRealTimers();
 	vi.restoreAllMocks();
 	document.body.innerHTML = '';
 } );
@@ -247,6 +248,35 @@ describe( 'bootEditorSidecar', () => {
 		expect( editor.renderCustomTitleBarButtons ).toHaveBeenCalledTimes( 1 );
 		// Session restore should not unexpectedly resize the window.
 		expect( editor.maximize ).not.toHaveBeenCalled();
+	} );
+
+	test( 'waits for Gutenberg stores and DOM that mount after bridge readiness', async () => {
+		vi.useFakeTimers();
+		window.localStorage.setItem( STORAGE_KEY, JSON.stringify( [ 'post-34' ] ) );
+		const frame = gutenbergFrame();
+		const select = frame.wp!.data!.select!;
+		frame.wp!.data!.select = () => undefined;
+		frame.document.querySelector( '.interface-interface-skeleton' )?.remove();
+		const { manager, def } = await boot();
+		const editor = fakeWindow( 'post-34', frame );
+		manager.add( editor );
+
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: 'post-34' } );
+		expect( def.match( editor as never ) ).toBe( false );
+		expect( frame.postMessage ).not.toHaveBeenCalled();
+
+		frame.wp!.data!.select = select;
+		const skeleton = frame.document.createElement( 'div' );
+		skeleton.className = 'interface-interface-skeleton';
+		frame.document.body.appendChild( skeleton );
+		await vi.advanceTimersByTimeAsync( 250 );
+
+		expect( def.match( editor as never ) ).toBe( true );
+		expect( frame.postMessage ).toHaveBeenCalledWith(
+			{ type: 'os-editor-sidecar-set', active: true },
+			window.location.origin,
+		);
+		expect( editor.renderCustomTitleBarButtons ).toHaveBeenCalledTimes( 2 );
 	} );
 
 	test( 'follows Gutenberg when its own close control closes the sidebar', async () => {
