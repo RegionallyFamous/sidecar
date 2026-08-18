@@ -587,13 +587,11 @@ export function installEditorAutosaveHandler(): void {
  *
  * A companion editor iframe uses this handler to suppress its duplicate
  * canvas and let Gutenberg's complementary area fill a separate, real
- * OpenStation window. The source editor uses the same handler to park its
- * own complementary area while that companion is open, then restore the
- * exact Post, Block, or plugin area when the companion closes.
+ * OpenStation window. The source editor remains unchanged, so its own
+ * complementary area can stay open at the same time.
  *
  * Parent → iframe:
  *  - `os-editor-sidecar-set` `{ active, detached?, area? }`
- *  - `os-editor-sidecar-source` `{ parked: boolean }`
  *
  * Iframe → parent:
  *  - `os-editor-sidecar-state` `{ active, available, width, area }`
@@ -617,8 +615,6 @@ export function installEditorSidecarHandler(): void {
 	const ABSOLUTE_MAX_WIDTH = 520;
 	const MIN_EDITOR_WIDTH = 320;
 	const INITIAL_SIDEBAR_TIMEOUT_MS = 4000;
-	const SIDEBAR_AREA_PATTERN =
-		/^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_./-]*$/i;
 
 	interface ComplementaryAreaSelect {
 		getActiveComplementaryArea?: ( scope: string ) => string | null;
@@ -640,7 +636,6 @@ export function installEditorSidecarHandler(): void {
 		data?: {
 			select?: ( store: string ) => ComplementaryAreaSelect | undefined;
 			dispatch?: ( store: string ) => ComplementaryAreaDispatch | undefined;
-			subscribe?: ( listener: () => void ) => () => void;
 		};
 	}
 
@@ -745,12 +740,6 @@ export function installEditorSidecarHandler(): void {
 	let missingTimer: number | null = null;
 	let handle: HTMLDivElement | null = null;
 	let detached = false;
-	let sourceParked = false;
-	let parkedSourceArea: string | null = null;
-	let sourceAreaUnsubscribe: ( () => void ) | null = null;
-	let suppressSourceAreaSync = false;
-	let sourceIntentQueued = false;
-	let sourceParkGeneration = 0;
 	let distractionFreeWasEnabled = false;
 	let dragging = false;
 	let dragStartX = 0;
@@ -1059,109 +1048,10 @@ export function installEditorSidecarHandler(): void {
 		report( true );
 	};
 
-	const closeParkedSourceArea = ( controller: AreaController ): void => {
-		suppressSourceAreaSync = true;
-		try {
-			controller.close();
-		} finally {
-			suppressSourceAreaSync = false;
-		}
-	};
-
-	const syncParkedSourceArea = (): void => {
-		if (
-			! sourceParked ||
-			suppressSourceAreaSync ||
-			sourceIntentQueued
-		) {
-			return;
-		}
-		const area = getController()?.getActive() ?? null;
-		if ( ! area || ! SIDEBAR_AREA_PATTERN.test( area ) ) {
-			return;
-		}
-		sourceIntentQueued = true;
-		const generation = sourceParkGeneration;
-		window.queueMicrotask( () => {
-			const finish = (): void => {
-				if ( generation === sourceParkGeneration ) {
-					sourceIntentQueued = false;
-				}
-			};
-			if ( ! sourceParked || generation !== sourceParkGeneration ) {
-				finish();
-				return;
-			}
-			const controller = getController();
-			const finalArea = controller?.getActive() ?? null;
-			if (
-				! controller ||
-				! finalArea ||
-				! SIDEBAR_AREA_PATTERN.test( finalArea )
-			) {
-				finish();
-				return;
-			}
-			// The native Gutenberg button remains useful as a selector, but the
-			// source stays parked while the companion owns the visible panel.
-			closeParkedSourceArea( controller );
-			try {
-				window.parent.postMessage(
-					{ type: 'os-editor-sidecar-source-area', area: finalArea },
-					origin,
-				);
-			} catch {
-				/* parent gone */
-			}
-			finish();
-		} );
-	};
-
-	const setSourceParked = ( parked: boolean ): void => {
-		const controller = getController();
-		if ( ! controller ) {
-			return;
-		}
-		if ( parked ) {
-			if ( sourceParked ) {
-				return;
-			}
-			sourceParked = true;
-			sourceParkGeneration += 1;
-			sourceIntentQueued = false;
-			parkedSourceArea = controller.getActive();
-			const subscribe = getWp()?.data?.subscribe;
-			if ( typeof subscribe === 'function' ) {
-				sourceAreaUnsubscribe = subscribe( syncParkedSourceArea );
-			}
-			if ( controller.getActive() ) {
-				closeParkedSourceArea( controller );
-			}
-			return;
-		}
-		if ( ! sourceParked ) {
-			return;
-		}
-		sourceParked = false;
-		sourceParkGeneration += 1;
-		sourceIntentQueued = false;
-		sourceAreaUnsubscribe?.();
-		sourceAreaUnsubscribe = null;
-		const restoreArea = parkedSourceArea;
-		parkedSourceArea = null;
-		if ( restoreArea ) {
-			controller.open( restoreArea );
-		}
-	};
-
 	window.addEventListener( 'pointermove', onPointerMove );
 	window.addEventListener( 'pointerup', stopDragging );
 	window.addEventListener( 'pointercancel', stopDragging );
 	window.addEventListener( 'pagehide', () => {
-		sourceParkGeneration += 1;
-		sourceIntentQueued = false;
-		sourceAreaUnsubscribe?.();
-		sourceAreaUnsubscribe = null;
 		if ( detached && distractionFreeWasEnabled ) {
 			setDistractionFree( true );
 		}
@@ -1182,15 +1072,7 @@ export function installEditorSidecarHandler(): void {
 			active?: unknown;
 			detached?: unknown;
 			area?: unknown;
-			parked?: unknown;
 		} | null;
-		if (
-			data?.type === 'os-editor-sidecar-source' &&
-			typeof data.parked === 'boolean'
-		) {
-			setSourceParked( data.parked );
-			return;
-		}
 		if (
 			! data ||
 			data.type !== 'os-editor-sidecar-set' ||

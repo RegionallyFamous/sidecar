@@ -1,9 +1,8 @@
 /**
  * Iframe-side tests for Gutenberg's Sidebar Window handler.
  *
- * The source editor parks its complementary area while a separate
- * managed OpenStation window displays the requested area. The bridge
- * must restore the exact source area when that sibling closes.
+ * A separate managed OpenStation window displays the requested area while
+ * the source editor remains untouched and can keep its own sidebar open.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { installEditorSidecarHandler } from '../../src/iframe-bridge-standalone';
@@ -42,19 +41,6 @@ function sendSet(
 	);
 }
 
-function sendSource(
-	parked: boolean,
-	origin = window.location.origin,
-): void {
-	window.dispatchEvent(
-		new MessageEvent( 'message', {
-			origin,
-			source: window.parent,
-			data: { type: 'os-editor-sidecar-source', parked },
-		} ),
-	);
-}
-
 function states(): SidecarState[] {
 	return postMessage.mock.calls
 		.map( ( call ) => call[ 0 ] as unknown )
@@ -64,26 +50,6 @@ function states(): SidecarState[] {
 				typeof message === 'object' &&
 				( message as { type?: unknown } ).type ===
 					'os-editor-sidecar-state',
-		);
-}
-
-function sourceAreaMessages(): Array< {
-	type: 'os-editor-sidecar-source-area';
-	area: string;
-} > {
-	return postMessage.mock.calls
-		.map( ( call ) => call[ 0 ] as unknown )
-		.filter(
-			(
-				message,
-			): message is {
-				type: 'os-editor-sidecar-source-area';
-				area: string;
-			} =>
-				!! message &&
-				typeof message === 'object' &&
-				( message as { type?: unknown } ).type ===
-					'os-editor-sidecar-source-area',
 		);
 }
 
@@ -182,7 +148,6 @@ beforeEach( () => {
 	// return it to its inactive baseline between tests.
 	if ( installed ) {
 		sendSet( false );
-		sendSource( false );
 	}
 	document.body.innerHTML = '';
 	document.body.className = '';
@@ -205,7 +170,6 @@ beforeEach( () => {
 
 afterEach( () => {
 	sendSet( false );
-	sendSource( false );
 	postMessage.mockRestore();
 	delete ( window as unknown as { wp?: unknown } ).wp;
 	vi.useRealTimers();
@@ -326,59 +290,20 @@ describe( 'installEditorSidecarHandler', () => {
 		} );
 	} );
 
-	test( 'parks and safely restores the source complementary area', () => {
-		const gutenberg = installGutenberg( 'yoast-seo/sidebar' );
-		addEditorDom();
-
-		sendSource( true );
-		expect( gutenberg.disable ).toHaveBeenCalledWith( 'core' );
-		expect( gutenberg.activeArea ).toBeNull();
-
-		// Duplicate park messages must not overwrite the remembered area
-		// with null during iframe-ready/session replay.
-		sendSource( true );
-		sendSource( false );
-
-		expect( gutenberg.enable ).toHaveBeenLastCalledWith(
-			'core',
-			'yoast-seo/sidebar',
-		);
-		expect( gutenberg.activeArea ).toBe( 'yoast-seo/sidebar' );
-	} );
-
-	test( 'forwards a sidebar opened in the parked source and immediately closes it locally', async () => {
+	test( 'never parks the source sidebar', () => {
 		const gutenberg = installGutenberg( 'edit-post/document' );
 		addEditorDom();
-		sendSource( true );
-		expect( sourceAreaMessages() ).toEqual( [] );
-		postMessage.mockClear();
-		gutenberg.disable.mockClear();
 
-		gutenberg.changeArea( 'jetpack-sidebar/jetpack' );
-		await Promise.resolve();
-
-		expect( postMessage ).toHaveBeenCalledWith(
-			{
-				type: 'os-editor-sidecar-source-area',
-				area: 'jetpack-sidebar/jetpack',
-			},
-			window.location.origin,
+		window.dispatchEvent(
+			new MessageEvent( 'message', {
+				origin: window.location.origin,
+				source: window.parent,
+				data: { type: 'os-editor-sidecar-source', parked: true },
+			} ),
 		);
-		expect( gutenberg.disable ).toHaveBeenCalledWith( 'core' );
-		expect( gutenberg.activeArea ).toBeNull();
 
-		sendSource( false );
-		expect( gutenberg.enable ).toHaveBeenLastCalledWith(
-			'core',
-			'edit-post/document',
-		);
+		expect( gutenberg.disable ).not.toHaveBeenCalled();
 		expect( gutenberg.activeArea ).toBe( 'edit-post/document' );
-		expect( sourceAreaMessages() ).toEqual( [
-			{
-				type: 'os-editor-sidecar-source-area',
-				area: 'jetpack-sidebar/jetpack',
-			},
-		] );
 	} );
 
 	test( 'mounts an accessible keyboard resizer and persists clamped width', async () => {
@@ -465,7 +390,6 @@ describe( 'installEditorSidecarHandler', () => {
 		addEditorDom( false );
 
 		sendSet( true, {}, 'https://attacker.test' );
-		sendSource( true, 'https://attacker.test' );
 
 		expect( gutenberg.enable ).not.toHaveBeenCalled();
 		expect( states() ).toHaveLength( 0 );

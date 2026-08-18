@@ -666,61 +666,7 @@ describe( 'bootEditorSidecar', () => {
 		expect( manager.open ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	test( 'routes a trusted parked-source area change to the existing companion', async () => {
-		const { manager, def } = await boot();
-		const sourceFrame = gutenbergFrame( 'edit-post/document' );
-		const jetpack = sourceFrame.document.createElement( 'button' );
-		jetpack.setAttribute( 'aria-controls', 'jetpack-sidebar:jetpack' );
-		jetpack.setAttribute( 'aria-label', 'Jetpack' );
-		sourceFrame.document.body.appendChild( jetpack );
-		const editor = fakeWindow( 'post-source-area', sourceFrame );
-		manager.add( editor );
-		await clickButton( def, editor );
-		const companion = manager.getById( 'post-source-area--sidebar-window' )!;
-		const companionFrame =
-			companion.iframe!.contentWindow as unknown as FrameWindow;
-		hooks.doAction( HOOKS.IFRAME_READY, { windowId: companion.id } );
-		const selector = companion.element.querySelector< HTMLElement >(
-			'os-select.os-editor-sidecar-panel-select',
-		)!;
-		companionFrame.postMessage.mockClear();
-
-		stateMessage(
-			sourceFrame,
-			{
-				type: 'os-editor-sidecar-source-area',
-				area: 'jetpack-sidebar/jetpack',
-			},
-			'https://attacker.test',
-		);
-		stateMessage( gutenbergFrame(), {
-			type: 'os-editor-sidecar-source-area',
-			area: 'jetpack-sidebar/jetpack',
-		} );
-		expect( companionFrame.postMessage ).not.toHaveBeenCalled();
-		expect( selector.getAttribute( 'value' ) ).toBe( 'edit-post/document' );
-
-		stateMessage( sourceFrame, {
-			type: 'os-editor-sidecar-source-area',
-			area: 'jetpack-sidebar/jetpack',
-		} );
-
-		expect( companionFrame.postMessage ).toHaveBeenLastCalledWith(
-			{
-				type: 'os-editor-sidecar-set',
-				active: true,
-				detached: true,
-				area: 'jetpack-sidebar/jetpack',
-			},
-			window.location.origin,
-		);
-		expect( selector.getAttribute( 'value' ) ).toBe(
-			'jetpack-sidebar/jetpack',
-		);
-		expect( manager.open ).toHaveBeenCalledTimes( 1 );
-	} );
-
-	test( 'does not rewrite the parked source restore area from companion changes', async () => {
+	test( 'keeps the source sidebar independent from companion changes', async () => {
 		const { manager, def } = await boot();
 		const sourceFrame = gutenbergFrame( 'edit-post/document' );
 		const jetpack = sourceFrame.document.createElement( 'button' );
@@ -737,6 +683,7 @@ describe( 'bootEditorSidecar', () => {
 		const selector = companion.element.querySelector< HTMLElement >(
 			'os-select.os-editor-sidecar-panel-select',
 		)!;
+		expect( sourceFrame.postMessage ).not.toHaveBeenCalled();
 		sourceFrame.postMessage.mockClear();
 
 		selector.dispatchEvent(
@@ -785,10 +732,7 @@ describe( 'bootEditorSidecar', () => {
 		expect( editor.applySnap ).not.toHaveBeenCalled();
 		expect( editor.maximize ).not.toHaveBeenCalled();
 		expect( editor.state ).toBe( 'normal' );
-		expect( frame.postMessage ).toHaveBeenCalledWith(
-			{ type: 'os-editor-sidecar-source', parked: true },
-			window.location.origin,
-		);
+		expect( frame.postMessage ).not.toHaveBeenCalled();
 
 		const companion = manager.getById( 'post-17--sidebar-window' )!;
 		expect( companion.state ).toBe( 'normal' );
@@ -966,10 +910,7 @@ describe( 'bootEditorSidecar', () => {
 		).toBe( false );
 		expect( replacedUrl.searchParams.get( 'post' ) ).toBe( '77' );
 		expect( replacedUrl.hash ).toBe( '#editor' );
-		expect( frame.postMessage ).toHaveBeenCalledWith(
-			{ type: 'os-editor-sidecar-source', parked: true },
-			window.location.origin,
-		);
+		expect( frame.postMessage ).not.toHaveBeenCalled();
 
 		const companion = manager.getById( config.id )!;
 		const companionFrame =
@@ -1022,7 +963,7 @@ describe( 'bootEditorSidecar', () => {
 		);
 	} );
 
-	test( 'toggle-off stays parked until the companion close is accepted', async () => {
+	test( 'toggle-off stays active until the companion close is accepted', async () => {
 		const { manager, def } = await boot();
 		const frame = gutenbergFrame();
 		const editor = fakeWindow( 'post-25', frame );
@@ -1037,10 +978,7 @@ describe( 'bootEditorSidecar', () => {
 		expect(
 			companion.close.mock.calls.length + companion.destroy.mock.calls.length,
 		).toBe( 1 );
-		expect( frame.postMessage ).not.toHaveBeenCalledWith(
-			{ type: 'os-editor-sidecar-source', parked: false },
-			window.location.origin,
-		);
+		expect( frame.postMessage ).not.toHaveBeenCalled();
 		expect( JSON.parse( window.localStorage.getItem( STORAGE_KEY )! ) ).toEqual(
 			[ 'post-25' ],
 		);
@@ -1050,10 +988,7 @@ describe( 'bootEditorSidecar', () => {
 
 		companion.acceptClose();
 
-		expect( frame.postMessage ).toHaveBeenCalledWith(
-			{ type: 'os-editor-sidecar-source', parked: false },
-			window.location.origin,
-		);
+		expect( frame.postMessage ).not.toHaveBeenCalled();
 		expect( JSON.parse( window.localStorage.getItem( STORAGE_KEY )! ) ).toEqual(
 			[],
 		);
@@ -1087,10 +1022,7 @@ describe( 'bootEditorSidecar', () => {
 		expect(
 			stale.close.mock.calls.length + stale.destroy.mock.calls.length,
 		).toBe( 1 );
-		expect( frame.postMessage ).toHaveBeenLastCalledWith(
-			{ type: 'os-editor-sidecar-source', parked: false },
-			window.location.origin,
-		);
+		expect( frame.postMessage ).not.toHaveBeenCalled();
 	} );
 
 	test( 'on-off-on during open preserves the final desired activation', async () => {
@@ -1119,10 +1051,7 @@ describe( 'bootEditorSidecar', () => {
 		expect( JSON.parse( window.localStorage.getItem( STORAGE_KEY )! ) ).toEqual(
 			[ 'post-race-on' ],
 		);
-		expect( frame.postMessage ).toHaveBeenLastCalledWith(
-			{ type: 'os-editor-sidecar-source', parked: true },
-			window.location.origin,
-		);
+		expect( frame.postMessage ).not.toHaveBeenCalled();
 		expect(
 			companion.close.mock.calls.length + companion.destroy.mock.calls.length,
 		).toBe( 0 );
@@ -1258,16 +1187,13 @@ describe( 'bootEditorSidecar', () => {
 			companion.close.mock.calls.length + companion.destroy.mock.calls.length,
 		).toBe( 1 );
 		companion.acceptClose();
-		expect( frame.postMessage ).toHaveBeenCalledWith(
-			{ type: 'os-editor-sidecar-source', parked: false },
-			window.location.origin,
-		);
+		expect( frame.postMessage ).not.toHaveBeenCalled();
 		expect( JSON.parse( window.localStorage.getItem( STORAGE_KEY )! ) ).toEqual(
 			[],
 		);
 	} );
 
-	test( 'closing the managed sibling unparks the source and clears toggle state', async () => {
+	test( 'closing the managed sibling leaves the source untouched and clears toggle state', async () => {
 		const { manager, def } = await boot();
 		const frame = gutenbergFrame();
 		const editor = fakeWindow( 'post-45', frame );
@@ -1281,10 +1207,7 @@ describe( 'bootEditorSidecar', () => {
 			windowId: 'post-45--sidebar-window',
 		} );
 
-		expect( frame.postMessage ).toHaveBeenCalledWith(
-			{ type: 'os-editor-sidecar-source', parked: false },
-			window.location.origin,
-		);
+		expect( frame.postMessage ).not.toHaveBeenCalled();
 		expect( JSON.parse( window.localStorage.getItem( STORAGE_KEY )! ) ).toEqual(
 			[],
 		);
