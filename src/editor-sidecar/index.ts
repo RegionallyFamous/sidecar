@@ -1313,16 +1313,31 @@ export function bootEditorSidecar( {
 		if ( event.origin !== window.location.origin ) {
 			return;
 		}
-		const data = event.data as
-			| {
-					type?: unknown;
-					active?: unknown;
-					available?: unknown;
-					area?: unknown;
-			}
-			| null;
+		const data = event.data as {
+			type?: unknown;
+			active?: unknown;
+			available?: unknown;
+			area?: unknown;
+		} | null;
+		if ( ! data ) {
+			return;
+		}
 		if (
-			! data ||
+			data.type === 'os-editor-sidecar-source-area' &&
+			typeof data.area === 'string' &&
+			SIDEBAR_AREA_PATTERN.test( data.area )
+		) {
+			for ( const sourceId of store.state.activeEditors ) {
+				const source = manager.getById( sourceId );
+				if ( source?.iframe?.contentWindow !== event.source ) {
+					continue;
+				}
+				chooseSidebarArea( source, data.area );
+				break;
+			}
+			return;
+		}
+		if (
 			data.type !== 'os-editor-sidecar-state' ||
 			typeof data.active !== 'boolean'
 		) {

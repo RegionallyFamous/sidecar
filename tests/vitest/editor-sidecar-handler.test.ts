@@ -22,6 +22,7 @@ interface GutenbergRig {
 	activeArea: string | null;
 	enable: ReturnType< typeof vi.fn >;
 	disable: ReturnType< typeof vi.fn >;
+	changeArea: ( area: string | null ) => void;
 }
 
 let postMessage: ReturnType< typeof vi.spyOn >;
@@ -35,6 +36,7 @@ function sendSet(
 	window.dispatchEvent(
 		new MessageEvent( 'message', {
 			origin,
+			source: window.parent,
 			data: { type: 'os-editor-sidecar-set', active, ...opts },
 		} ),
 	);
@@ -47,6 +49,7 @@ function sendSource(
 	window.dispatchEvent(
 		new MessageEvent( 'message', {
 			origin,
+			source: window.parent,
 			data: { type: 'os-editor-sidecar-source', parked },
 		} ),
 	);
@@ -64,23 +67,59 @@ function states(): SidecarState[] {
 		);
 }
 
+function sourceAreaMessages(): Array< {
+	type: 'os-editor-sidecar-source-area';
+	area: string;
+} > {
+	return postMessage.mock.calls
+		.map( ( call ) => call[ 0 ] as unknown )
+		.filter(
+			(
+				message,
+			): message is {
+				type: 'os-editor-sidecar-source-area';
+				area: string;
+			} =>
+				!! message &&
+				typeof message === 'object' &&
+				( message as { type?: unknown } ).type ===
+					'os-editor-sidecar-source-area',
+		);
+}
+
 function lastState(): SidecarState {
 	const all = states();
 	return all[ all.length - 1 ];
 }
 
 function installGutenberg( currentArea: string | null = null ): GutenbergRig {
+	const subscribers = new Set< () => void >();
+	const notify = (): void => {
+		for ( const subscriber of subscribers ) {
+			subscriber();
+		}
+	};
 	const rig: GutenbergRig = {
 		activeArea: currentArea,
 		enable: vi.fn( ( _scope: string, area: string ) => {
 			rig.activeArea = area;
+			notify();
 		} ),
 		disable: vi.fn( () => {
 			rig.activeArea = null;
+			notify();
 		} ),
+		changeArea: ( area ) => {
+			rig.activeArea = area;
+			notify();
+		},
 	};
 	( window as unknown as { wp: unknown } ).wp = {
 		data: {
+			subscribe: ( subscriber: () => void ) => {
+				subscribers.add( subscriber );
+				return () => subscribers.delete( subscriber );
+			},
 			select: ( store: string ) => {
 				if ( store === 'core/editor' ) {
 					return {};
@@ -305,6 +344,41 @@ describe( 'installEditorSidecarHandler', () => {
 			'yoast-seo/sidebar',
 		);
 		expect( gutenberg.activeArea ).toBe( 'yoast-seo/sidebar' );
+	} );
+
+	test( 'forwards a sidebar opened in the parked source and immediately closes it locally', async () => {
+		const gutenberg = installGutenberg( 'edit-post/document' );
+		addEditorDom();
+		sendSource( true );
+		expect( sourceAreaMessages() ).toEqual( [] );
+		postMessage.mockClear();
+		gutenberg.disable.mockClear();
+
+		gutenberg.changeArea( 'jetpack-sidebar/jetpack' );
+		await Promise.resolve();
+
+		expect( postMessage ).toHaveBeenCalledWith(
+			{
+				type: 'os-editor-sidecar-source-area',
+				area: 'jetpack-sidebar/jetpack',
+			},
+			window.location.origin,
+		);
+		expect( gutenberg.disable ).toHaveBeenCalledWith( 'core' );
+		expect( gutenberg.activeArea ).toBeNull();
+
+		sendSource( false );
+		expect( gutenberg.enable ).toHaveBeenLastCalledWith(
+			'core',
+			'edit-post/document',
+		);
+		expect( gutenberg.activeArea ).toBe( 'edit-post/document' );
+		expect( sourceAreaMessages() ).toEqual( [
+			{
+				type: 'os-editor-sidecar-source-area',
+				area: 'jetpack-sidebar/jetpack',
+			},
+		] );
 	} );
 
 	test( 'mounts an accessible keyboard resizer and persists clamped width', async () => {
