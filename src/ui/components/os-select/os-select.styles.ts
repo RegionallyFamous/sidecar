@@ -46,6 +46,24 @@ export const selectStyles = css`
 		color: var( --os-ui-fg-muted, #646970 );
 	}
 
+	/* Toolbar density: the label remains in the shadow tree and the
+	 * native select keeps its aria-label, but the visible field becomes
+	 * a single compact row instead of a stacked form control. */
+	:host( [ compact ] ) {
+		gap: 0;
+	}
+
+	:host( [ compact ] ) .os-select__label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset( 50% );
+		white-space: nowrap;
+	}
+
 	.os-select__wrap {
 		position: relative;
 		display: flex;
@@ -67,6 +85,11 @@ export const selectStyles = css`
 		font-size: 13px;
 		color: var( --os-ui-fg, #1d2327 );
 		cursor: pointer;
+	}
+
+	:host( [ compact ] ) select {
+		padding-block: 5px;
+		border-radius: 6px;
 	}
 
 	/*

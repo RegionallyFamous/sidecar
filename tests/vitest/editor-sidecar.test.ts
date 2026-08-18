@@ -469,7 +469,14 @@ describe( 'bootEditorSidecar', () => {
 		);
 		expect( selector ).not.toBeNull();
 		expect( selector!.getAttribute( 'label' ) ).toBe( 'Sidebar panel' );
+		expect( selector!.hasAttribute( 'compact' ) ).toBe( true );
 		expect( selector!.getAttribute( 'value' ) ).toBe( 'edit-post/document' );
+		const close = companion.element.querySelector< HTMLElement >(
+			'os-window-button.os-editor-sidecar-panel-close',
+		);
+		expect( close?.getAttribute( 'aria-label' ) ).toBe(
+			'Close Sidebar Window',
+		);
 
 		const options = Array.from(
 			selector!.querySelectorAll< HTMLElement >( 'os-option' ),
@@ -506,6 +513,9 @@ describe( 'bootEditorSidecar', () => {
 		);
 		expect( selector ).not.toBeNull();
 		expect( selector!.getAttribute( 'value' ) ).toBe( 'edit-post/document' );
+		expect(
+			slot.querySelector( 'os-window-button.os-editor-sidecar-panel-close' ),
+		).not.toBeNull();
 
 		selector!.dispatchEvent(
 			new CustomEvent( 'os-pick', {
@@ -527,6 +537,27 @@ describe( 'bootEditorSidecar', () => {
 		expect( selector!.getAttribute( 'value' ) ).toBe(
 			'jetpack-sidebar/jetpack',
 		);
+
+		hooks.doAction( HOOKS.WINDOW_FOCUSED, { windowId: companion.id } );
+		expect(
+			editor.element.classList.contains(
+				'os-window--editor-sidecar-pair-focused',
+			),
+		).toBe( true );
+		expect(
+			companion.element.classList.contains(
+				'os-window--editor-sidecar-pair-focused',
+			),
+		).toBe( true );
+		hooks.doAction( HOOKS.WINDOW_FOCUSED, { windowId: 'another-window' } );
+		expect(
+			editor.element.classList.contains(
+				'os-window--editor-sidecar-pair-focused',
+			),
+		).toBe( false );
+
+		close!.click();
+		expect( companion.close ).toHaveBeenCalledTimes( 1 );
 
 		// Companion readiness can replay after its iframe navigates. The same
 		// selected area remains visible and is reactivated without another open.
@@ -765,6 +796,11 @@ describe( 'bootEditorSidecar', () => {
 		expect( companion.element.style.top ).toBe( '80px' );
 		expect( companion.element.style.width ).toBe( '320px' );
 		expect( companion.element.style.height ).toBe( '600px' );
+		expect(
+			editor.element.style.getPropertyValue(
+				'--os-editor-sidecar-companion-width',
+			),
+		).toBe( '320px' );
 		expect( companion.element.parentElement ).toBe( editor.element.parentElement );
 		expect( editor.element.contains( companion.element ) ).toBe( false );
 		expect( editor.iframe ).toBe( originalIframe );
@@ -844,6 +880,11 @@ describe( 'bootEditorSidecar', () => {
 		expect( editor.element.style.left ).toBe( '100px' );
 		expect( editor.element.style.top ).toBe( '50px' );
 		expect( editor.element.style.width ).toBe( '1000px' );
+		expect(
+			editor.element.style.getPropertyValue(
+				'--os-editor-sidecar-companion-width',
+			),
+		).toBe( '' );
 	} );
 
 	test( 'uses the source Gutenberg sidebar width when it is measurable', async () => {

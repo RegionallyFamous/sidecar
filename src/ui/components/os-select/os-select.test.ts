@@ -30,6 +30,24 @@ describe( '<os-select> + <os-option>', () => {
 		expect( opts ).toEqual( [ 'eur', 'usd', 'jpy' ] );
 	} );
 
+	test( 'compact toolbar mode preserves the native accessible name', async () => {
+		host.innerHTML = `
+			<os-select value="post" label="Sidebar panel" compact>
+				<os-option value="post">Post</os-option>
+			</os-select>
+		`;
+		await tick();
+		await tick();
+
+		const el = host.querySelector( 'os-select' )!;
+		const native = el.shadowRoot!.querySelector( 'select' )!;
+		expect( el.hasAttribute( 'compact' ) ).toBe( true );
+		expect( native.getAttribute( 'aria-label' ) ).toBe( 'Sidebar panel' );
+		expect(
+			el.shadowRoot!.querySelector( 'label.os-select__label' )?.textContent,
+		).toBe( 'Sidebar panel' );
+	} );
+
 	test( 'emits os-pick with { value } on change and reflects value into the attribute', async () => {
 		host.innerHTML = `
 			<os-select value="eur">

@@ -93,6 +93,7 @@ export class OsSelect extends Component {
 		'placeholder',
 		'disabled',
 		'name',
+		'compact',
 	] as const;
 	static styles = [ selectStyles ];
 
@@ -126,6 +127,12 @@ export class OsSelect extends Component {
 				name: 'name',
 				type: 'string',
 				description: 'Forwarded to the native <select name=…> for form submission.',
+			},
+			{
+				name: 'compact',
+				type: 'boolean attribute',
+				description:
+					'Visually hides the label and tightens the field for toolbar placement while preserving the native select accessible name.',
 			},
 		],
 		slots: [
