@@ -617,6 +617,8 @@ export function installEditorSidecarHandler(): void {
 	const ABSOLUTE_MAX_WIDTH = 520;
 	const MIN_EDITOR_WIDTH = 320;
 	const INITIAL_SIDEBAR_TIMEOUT_MS = 4000;
+	const SIDEBAR_AREA_PATTERN =
+		/^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_./-]*$/i;
 
 	interface ComplementaryAreaSelect {
 		getActiveComplementaryArea?: ( scope: string ) => string | null;
@@ -638,6 +640,7 @@ export function installEditorSidecarHandler(): void {
 		data?: {
 			select?: ( store: string ) => ComplementaryAreaSelect | undefined;
 			dispatch?: ( store: string ) => ComplementaryAreaDispatch | undefined;
+			subscribe?: ( listener: () => void ) => () => void;
 		};
 	}
 
@@ -744,6 +747,10 @@ export function installEditorSidecarHandler(): void {
 	let detached = false;
 	let sourceParked = false;
 	let parkedSourceArea: string | null = null;
+	let sourceAreaUnsubscribe: ( () => void ) | null = null;
+	let suppressSourceAreaSync = false;
+	let sourceIntentQueued = false;
+	let sourceParkGeneration = 0;
 	let distractionFreeWasEnabled = false;
 	let dragging = false;
 	let dragStartX = 0;
@@ -1052,20 +1059,94 @@ export function installEditorSidecarHandler(): void {
 		report( true );
 	};
 
+	const closeParkedSourceArea = ( controller: AreaController ): void => {
+		suppressSourceAreaSync = true;
+		try {
+			controller.close();
+		} finally {
+			suppressSourceAreaSync = false;
+		}
+	};
+
+	const syncParkedSourceArea = (): void => {
+		if (
+			! sourceParked ||
+			suppressSourceAreaSync ||
+			sourceIntentQueued
+		) {
+			return;
+		}
+		const area = getController()?.getActive() ?? null;
+		if ( ! area || ! SIDEBAR_AREA_PATTERN.test( area ) ) {
+			return;
+		}
+		sourceIntentQueued = true;
+		const generation = sourceParkGeneration;
+		window.queueMicrotask( () => {
+			const finish = (): void => {
+				if ( generation === sourceParkGeneration ) {
+					sourceIntentQueued = false;
+				}
+			};
+			if ( ! sourceParked || generation !== sourceParkGeneration ) {
+				finish();
+				return;
+			}
+			const controller = getController();
+			const finalArea = controller?.getActive() ?? null;
+			if (
+				! controller ||
+				! finalArea ||
+				! SIDEBAR_AREA_PATTERN.test( finalArea )
+			) {
+				finish();
+				return;
+			}
+			// The native Gutenberg button remains useful as a selector, but the
+			// source stays parked while the companion owns the visible panel.
+			closeParkedSourceArea( controller );
+			try {
+				window.parent.postMessage(
+					{ type: 'os-editor-sidecar-source-area', area: finalArea },
+					origin,
+				);
+			} catch {
+				/* parent gone */
+			}
+			finish();
+		} );
+	};
+
 	const setSourceParked = ( parked: boolean ): void => {
 		const controller = getController();
-		if ( ! controller || parked === sourceParked ) {
+		if ( ! controller ) {
 			return;
 		}
 		if ( parked ) {
+			if ( sourceParked ) {
+				return;
+			}
 			sourceParked = true;
+			sourceParkGeneration += 1;
+			sourceIntentQueued = false;
 			parkedSourceArea = controller.getActive();
-			if ( parkedSourceArea ) {
-				controller.close();
+			const subscribe = getWp()?.data?.subscribe;
+			if ( typeof subscribe === 'function' ) {
+				sourceAreaUnsubscribe = subscribe( syncParkedSourceArea );
+			}
+			if ( controller.getActive() ) {
+				closeParkedSourceArea( controller );
 			}
 			return;
 		}
+		if ( ! sourceParked ) {
+			return;
+		}
 		sourceParked = false;
+		sourceParkGeneration += 1;
+		sourceIntentQueued = false;
+		sourceAreaUnsubscribe?.();
+		sourceAreaUnsubscribe = null;
 		const restoreArea = parkedSourceArea;
 		parkedSourceArea = null;
 		if ( restoreArea ) {
@@ -1077,6 +1158,10 @@ export function installEditorSidecarHandler(): void {
 	window.addEventListener( 'pointerup', stopDragging );
 	window.addEventListener( 'pointercancel', stopDragging );
 	window.addEventListener( 'pagehide', () => {
+		sourceParkGeneration += 1;
+		sourceIntentQueued = false;
+		sourceAreaUnsubscribe?.();
+		sourceAreaUnsubscribe = null;
 		if ( detached && distractionFreeWasEnabled ) {
 			setDistractionFree( true );
 		}
@@ -1089,7 +1174,7 @@ export function installEditorSidecarHandler(): void {
 	} );
 
 	window.addEventListener( 'message', ( event: MessageEvent ) => {
-		if ( event.origin !== origin ) {
+		if ( event.origin !== origin || event.source !== window.parent ) {
 			return;
 		}
 		const data = event.data as {

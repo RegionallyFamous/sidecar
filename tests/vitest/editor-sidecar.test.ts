@@ -635,6 +635,96 @@ describe( 'bootEditorSidecar', () => {
 		expect( manager.open ).toHaveBeenCalledTimes( 1 );
 	} );
 
+	test( 'routes a trusted parked-source area change to the existing companion', async () => {
+		const { manager, def } = await boot();
+		const sourceFrame = gutenbergFrame( 'edit-post/document' );
+		const jetpack = sourceFrame.document.createElement( 'button' );
+		jetpack.setAttribute( 'aria-controls', 'jetpack-sidebar:jetpack' );
+		jetpack.setAttribute( 'aria-label', 'Jetpack' );
+		sourceFrame.document.body.appendChild( jetpack );
+		const editor = fakeWindow( 'post-source-area', sourceFrame );
+		manager.add( editor );
+		await clickButton( def, editor );
+		const companion = manager.getById( 'post-source-area--sidebar-window' )!;
+		const companionFrame =
+			companion.iframe!.contentWindow as unknown as FrameWindow;
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: companion.id } );
+		const selector = companion.element.querySelector< HTMLElement >(
+			'os-select.os-editor-sidecar-panel-select',
+		)!;
+		companionFrame.postMessage.mockClear();
+
+		stateMessage(
+			sourceFrame,
+			{
+				type: 'os-editor-sidecar-source-area',
+				area: 'jetpack-sidebar/jetpack',
+			},
+			'https://attacker.test',
+		);
+		stateMessage( gutenbergFrame(), {
+			type: 'os-editor-sidecar-source-area',
+			area: 'jetpack-sidebar/jetpack',
+		} );
+		expect( companionFrame.postMessage ).not.toHaveBeenCalled();
+		expect( selector.getAttribute( 'value' ) ).toBe( 'edit-post/document' );
+
+		stateMessage( sourceFrame, {
+			type: 'os-editor-sidecar-source-area',
+			area: 'jetpack-sidebar/jetpack',
+		} );
+
+		expect( companionFrame.postMessage ).toHaveBeenLastCalledWith(
+			{
+				type: 'os-editor-sidecar-set',
+				active: true,
+				detached: true,
+				area: 'jetpack-sidebar/jetpack',
+			},
+			window.location.origin,
+		);
+		expect( selector.getAttribute( 'value' ) ).toBe(
+			'jetpack-sidebar/jetpack',
+		);
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	test( 'does not rewrite the parked source restore area from companion changes', async () => {
+		const { manager, def } = await boot();
+		const sourceFrame = gutenbergFrame( 'edit-post/document' );
+		const jetpack = sourceFrame.document.createElement( 'button' );
+		jetpack.setAttribute( 'aria-controls', 'jetpack-sidebar:jetpack' );
+		jetpack.setAttribute( 'aria-label', 'Jetpack' );
+		sourceFrame.document.body.appendChild( jetpack );
+		const editor = fakeWindow( 'post-restore-area', sourceFrame );
+		manager.add( editor );
+		await clickButton( def, editor );
+		const companion = manager.getById( 'post-restore-area--sidebar-window' )!;
+		const companionFrame =
+			companion.iframe!.contentWindow as unknown as FrameWindow;
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: companion.id } );
+		const selector = companion.element.querySelector< HTMLElement >(
+			'os-select.os-editor-sidecar-panel-select',
+		)!;
+		sourceFrame.postMessage.mockClear();
+
+		selector.dispatchEvent(
+			new CustomEvent( 'os-pick', {
+				detail: { value: 'jetpack-sidebar/jetpack' },
+			} ),
+		);
+		stateMessage( companionFrame, {
+			type: 'os-editor-sidecar-state',
+			active: true,
+			available: true,
+			width: 320,
+			area: 'edit-post/block',
+		} );
+		expect( sourceFrame.postMessage ).not.toHaveBeenCalled();
+		expect( selector.getAttribute( 'value' ) ).toBe( 'edit-post/block' );
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
+	} );
+
 	test( 'opens a narrow floating sibling directly beside the unchanged editor', async () => {
 		const { manager, def } = await boot();
 		const frame = gutenbergFrame( 'yoast-seo/sidebar' );

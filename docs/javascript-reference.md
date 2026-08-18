@@ -2631,7 +2631,9 @@ Gutenberg post-editor windows show a **Sidebar Window** button (columns icon, ri
 
 Choosing an area creates two real sibling OpenStation windows without turning the desktop into a half-screen split. After the selected complementary-area id and sidebar width are captured, the source editor parks its active area but keeps its iframe and floating state. An iframe-backed companion named `${sourceWindowId}--sidebar-window` opens on the same virtual desktop at the measured sidebar width (320px fallback), aligned with the source's top edge, equal to its height, and directly adjacent at its inline end. The shell shifts or minimally narrows the source only when the pair would otherwise cross the desktop edge. It loads the source's current post URL with `openstation_sidebar_window=1` and carries `ephemeral: true`. Only the source receives the **Sidebar Window** launch chooser, so companions cannot recursively detach another sidebar. The companion instead mounts an always-visible `<os-select class="os-editor-sidecar-panel-select" label="Sidebar panel">` inside `.os-window__slot--after-titlebar`. It lists Post, Block, and the discovered plugin areas, reflects the current area, and switches the existing companion through the same activation message. The source chooser remains available and also provides **Close Sidebar Window** while active.
 
-The shell waits for the companion iframe's `os-ready` handshake before sending `{ active: true, detached: true, area }`. The companion opens that area through `core/interface` or `core/edit-post`; detached CSS hides its duplicate Gutenberg header, post canvas, and footer and stretches its complementary area across the iframe. Narrow outer OpenStation chrome supplies the title bar, always-visible selector row, close control, border, and connected drag surface. Selecting a different panel sends another `os-editor-sidecar-set` to the same iframe; it does not open another companion. Resize, maximize, fullscreen, and detach controls are suppressed so it cannot become a half/full-screen tile. No faux title bar or sidebar DOM is injected into the source editor.
+The source editor's native Gutenberg sidebar controls remain useful after parking. While Sidebar Window is connected, clicking the Settings control or a Jetpack/other plugin sidebar button in Gutenberg's own top bar routes that control's complementary-area id to the existing companion. The click does not reopen the source sidebar or create another window; it switches the companion and updates the persistent **Sidebar panel** selector. Controls without a valid complementary-area mapping retain their ordinary Gutenberg behavior.
+
+The shell waits for the companion iframe's `os-ready` handshake before sending `{ active: true, detached: true, area }`. The companion opens that area through `core/interface` or `core/edit-post`; detached CSS hides its duplicate Gutenberg header, post canvas, and footer and stretches its complementary area across the iframe. Narrow outer OpenStation chrome supplies the title bar, always-visible selector row, close control, border, and connected drag surface. Selecting a panel from the companion, the source launch chooser, or Gutenberg's routed source controls sends another `os-editor-sidecar-set` to the same iframe; none of these paths opens another companion. Resize, maximize, fullscreen, and detach controls are suppressed so it cannot become a half/full-screen tile. No faux title bar or sidebar DOM is injected into the source editor.
 
 This is intentionally a **second Gutenberg document**. A single iframe cannot render into two independent shell-window rectangles, and moving arbitrary plugin-owned React DOM into the parent would sever delegated events, contexts, portals, styles, owner-document queries, focus traps, and measurement assumptions. Loading the same post again preserves a plugin sidebar's normal Gutenberg runtime, but the companion consequently has its own React/data registry, dirty flag, undo history, autosave timer, post-lock view, and save lifecycle. OpenStation does not synchronize it with the editable source. Plugin sidebars that mutate editor state can therefore race or overwrite source changes and must be compatibility-tested; panels backed by independent REST state generally have fewer coupling risks.
 
@@ -2639,7 +2641,7 @@ Closing the companion, choosing **Close Sidebar Window** from the source chooser
 
 The parent persists at most 64 active **source** window ids in `openstation.editorSidecar.activeWindows`. The companion itself is excluded from session snapshots. On session restoration the shell waits for the restored source iframe to become Gutenberg-ready, then creates a fresh narrow ephemeral `${sourceWindowId}--sidebar-window` beside the source's restored geometry; it never revives a stale companion document independently.
 
-The low-level `os-editor-sidecar-source`, `os-editor-sidecar-set`, and `os-editor-sidecar-state` messages are internal synchronization primitives documented in [Bridge protocol](./bridge-protocol.md#sidebar-window-state--os-editor-sidecar-). Plugin integrations continue to register ordinary Gutenberg `PluginSidebar` / complementary-area surfaces, but should test the two-document save and state model before claiming Sidebar Window compatibility.
+The low-level `os-editor-sidecar-source`, `os-editor-sidecar-source-area`, `os-editor-sidecar-set`, and `os-editor-sidecar-state` messages are internal synchronization primitives documented in [Bridge protocol](./bridge-protocol.md#sidebar-window-state--os-editor-sidecar-). Plugin integrations continue to register ordinary Gutenberg `PluginSidebar` / complementary-area surfaces, but should test the two-document save and state model before claiming Sidebar Window compatibility.
 
 ### `registerWindowLinkRenderer( def )` — Experimental
 
@@ -3738,6 +3740,14 @@ Parks or restores the source editor's complementary area while its managed sibli
 
 ```typescript
 { type: 'os-editor-sidecar-source'; parked: boolean }
+```
+
+#### `os-editor-sidecar-source-area` — Experimental
+
+Reports a valid complementary-area id opened through Gutenberg's native Settings or plugin-sidebar controls while the source iframe is parked. The source immediately closes its local copy again. After validating the exact source iframe and active pairing, the parent forwards the id to the existing companion through `os-editor-sidecar-set`; it never opens another companion.
+
+```typescript
+{ type: 'os-editor-sidecar-source-area'; area: string }
 ```
 
 #### `os-commands-subscribe` — Experimental
