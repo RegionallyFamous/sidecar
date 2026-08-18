@@ -452,6 +452,28 @@
 	display: none;
 }
 
+/*
+ * Sidebar Window keeps its panel picker in a dedicated row beneath the
+ * draggable title bar. It is intentionally a labelled native select rather
+ * than another icon-only chrome button: the current panel and the switching
+ * affordance remain visible after the companion has opened.
+ */
+.os-window--editor-sidecar-companion
+	.os-window__slot--after-titlebar {
+	display: flex;
+	align-items: stretch;
+	padding: 7px 8px 8px;
+	border-bottom: 1px solid var( --os-ui-border, #dcdcde );
+	background: var( --os-ui-surface, #fff );
+}
+
+.os-window--editor-sidecar-companion
+	.os-editor-sidecar-panel-select {
+	flex: 1;
+	min-width: 0;
+	width: 100%;
+}
+
 /* ---------------------------------------------------------------
  * Window control buttons.
  *

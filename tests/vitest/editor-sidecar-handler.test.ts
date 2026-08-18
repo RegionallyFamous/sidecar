@@ -15,6 +15,7 @@ interface SidecarState {
 	active: boolean;
 	available: boolean;
 	width: number;
+	area: string | null;
 }
 
 interface GutenbergRig {
@@ -225,6 +226,7 @@ describe( 'installEditorSidecarHandler', () => {
 			active: true,
 			available: true,
 			width: 320,
+			area: 'yoast-seo/sidebar',
 		} );
 	} );
 
@@ -247,6 +249,25 @@ describe( 'installEditorSidecarHandler', () => {
 		expect( lastState() ).toMatchObject( {
 			active: true,
 			available: true,
+			area: 'jetpack-sidebar/jetpack',
+		} );
+	} );
+
+	test( 'reports a sidebar area changed by Gutenberg itself', async () => {
+		const gutenberg = installGutenberg( 'edit-post/document' );
+		const sidebar = addEditorDom()!;
+		sendSet( true, { detached: true, area: 'edit-post/document' } );
+		await handle();
+
+		gutenberg.activeArea = 'jetpack-sidebar/jetpack';
+		sidebar.appendChild( document.createElement( 'div' ) );
+
+		await vi.waitFor( () => {
+			expect( lastState() ).toMatchObject( {
+				active: true,
+				available: true,
+				area: 'jetpack-sidebar/jetpack',
+			} );
 		} );
 	} );
 
