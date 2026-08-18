@@ -996,15 +996,17 @@ export function installEditorSidecarHandler(): void {
 			report( false );
 			return;
 		}
-		if ( active ) {
-			syncSidebar();
-			report( true );
-			return;
-		}
-
 		const controller = getController();
 		if ( ! controller ) {
 			report( false );
+			return;
+		}
+		if ( active ) {
+			if ( preferredArea && preferredArea !== controller.getActive() ) {
+				controller.open( preferredArea );
+			}
+			syncSidebar();
+			report( true );
 			return;
 		}
 		const currentArea = controller.getActive();

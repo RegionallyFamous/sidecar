@@ -12,6 +12,7 @@ interface BlueprintStep {
 	pluginData?: {
 		resource?: string;
 		url?: string;
+		slug?: string;
 	};
 	options?: {
 		activate?: boolean;
@@ -62,9 +63,10 @@ describe( 'public Playground Blueprint', () => {
 		expect( BLUEPRINT.features.networking ).toBe( true );
 	} );
 
-	test( 'installs OpenStation before running the intentional demo setup', () => {
+	test( 'installs OpenStation and Jetpack before the intentional demo setup', () => {
 		expect( BLUEPRINT.steps.map( ( step ) => step.step ) ).toEqual( [
 			'login',
+			'installPlugin',
 			'installPlugin',
 			'runPHP',
 		] );
@@ -75,10 +77,17 @@ describe( 'public Playground Blueprint', () => {
 			url: 'https://github.com/RegionallyFamous/sidecar/releases/latest/download/openstation.zip',
 		} );
 		expect( install.options ).toEqual( { activate: true } );
+
+		const jetpack = BLUEPRINT.steps[ 2 ];
+		expect( jetpack.pluginData ).toEqual( {
+			resource: 'wordpress.org/plugins',
+			slug: 'jetpack',
+		} );
+		expect( jetpack.options ).toEqual( { activate: true } );
 	} );
 
 	test( 'does not stage extensions or must-use plugins', () => {
-		expect( BLUEPRINT.steps ).toHaveLength( 3 );
+		expect( BLUEPRINT.steps ).toHaveLength( 4 );
 		expect(
 			BLUEPRINT.steps.some(
 				( step ) =>
@@ -87,14 +96,14 @@ describe( 'public Playground Blueprint', () => {
 			),
 		).toBe( false );
 
-		const php = BLUEPRINT.steps[ 2 ].code ?? '';
+		const php = BLUEPRINT.steps[ 3 ].code ?? '';
 		expect( php ).not.toContain( '/mu-plugins/' );
 		expect( php ).not.toContain( 'openstation_register_extension' );
 		expect( php ).not.toContain( 'file_put_contents' );
 	} );
 
 	test( 'creates the idempotent Sidebar Window demo and opens its editor', () => {
-		const setup = BLUEPRINT.steps[ 2 ];
+		const setup = BLUEPRINT.steps[ 3 ];
 		expect( setup.step ).toBe( 'runPHP' );
 		const php = setup.code ?? '';
 
