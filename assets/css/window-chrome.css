@@ -74,15 +74,20 @@
 
 /*
  * Gutenberg Sidebar Window is a real sibling iframe, but visually it behaves
- * like an inspector drawer extending from the editor body. The editor keeps
- * its normal OpenStation title bar, border, and shadow. The companion begins
- * below that title bar, loses all window chrome, and contributes only a flat
- * panel separated by the same quiet divider Gutenberg uses for sidebars.
+ * like an inspector extension. The source keeps its normal OpenStation
+ * window; the companion replaces its own chrome with a continuation of the
+ * source title bar, then contributes a flat panel separated by Gutenberg's
+ * quiet sidebar divider.
  */
 .os-window.os-window--editor-sidecar-source {
 	isolation: isolate;
 	overflow: visible;
+	border-inline-end-color: transparent;
 	border-end-end-radius: 0;
+}
+
+.os-window--editor-sidecar-source > .os-window__titlebar {
+	border-start-end-radius: 0;
 }
 
 .os-window--editor-sidecar-source > .os-window__body {
@@ -104,20 +109,16 @@
 	background: #fff;
 	background-clip: padding-box;
 	border: 0;
+	border-block-start: 1px solid var( --os-window-border );
 	border-block-end: 1px solid var( --os-window-border );
-	border-inline-start: 1px solid var( --os-ui-border, #dcdcde );
 	border-inline-end: 1px solid var( --os-window-border );
 	border-start-start-radius: 0;
-	border-start-end-radius: 0;
+	border-start-end-radius: var( --os-window-radius );
 	border-end-start-radius: 0;
 	border-end-end-radius: var( --os-window-radius );
 	box-shadow: none;
 	color: #1d2327;
 	--os-ui-surface: #fff;
-	--os-ui-fg: #1d2327;
-	--os-ui-fg-muted: #50575e;
-	--os-ui-hover: rgba( 0, 0, 0, 0.055 );
-	--os-ui-active: rgba( 0, 0, 0, 0.09 );
 }
 
 /* The editor owns the only title bar. */
@@ -507,9 +508,9 @@
 }
 
 /*
- * The companion's only shell control is a small neutral inspector row. It
- * aligns with Gutenberg's own editor toolbar below the OpenStation title bar,
- * so it reads as part of the page UI rather than a second title bar.
+ * This row is the inline continuation of the source title bar. The native
+ * selector stays accessible but its closed state becomes transparent title
+ * text rather than a dark field inside another dark field.
  */
 .os-window--editor-sidecar-companion
 	.os-window__slot--after-titlebar {
@@ -519,9 +520,33 @@
 	box-sizing: border-box;
 	height: 40px;
 	padding: 4px 5px 4px 8px;
-	border-bottom: 1px solid var( --os-ui-border, #dcdcde );
-	background: #fff;
-	color: #1d2327;
+	border-bottom: 0;
+	border-start-end-radius: max(
+		0px,
+		calc( var( --os-window-radius ) - 1px )
+	);
+	background-color: var( --os-titlebar-bg );
+	background-image: var( --os-titlebar-image, none );
+	background-repeat: var( --os-titlebar-image-repeat, repeat );
+	background-size: var( --os-titlebar-image-size, auto );
+	background-position: var( --os-titlebar-image-position, center );
+	color: var( --os-titlebar-color );
+	--os-ui-fg: var( --os-titlebar-color );
+	--os-ui-fg-muted: var( --os-titlebar-color );
+	--os-ui-hover: rgba( 255, 255, 255, 0.11 );
+	--os-ui-active: rgba( 255, 255, 255, 0.17 );
+}
+
+.os-window--editor-sidecar-companion.os-window--editor-sidecar-pair-focused
+	.os-window__slot--after-titlebar {
+	background-color: var( --os-titlebar-bg-focused );
+	background-image: var(
+		--os-titlebar-image-focused,
+		var( --os-titlebar-image, none )
+	);
+	color: var( --os-titlebar-color-focused );
+	--os-ui-fg: var( --os-titlebar-color-focused );
+	--os-ui-fg-muted: var( --os-titlebar-color-focused );
 }
 
 .os-window--editor-sidecar-companion

@@ -35,7 +35,6 @@ const COMPANION_WIDTH_STORAGE_KEY = 'openstation.editorSidecar.width';
 const DEFAULT_COMPANION_WIDTH = 320;
 const MIN_COMPANION_WIDTH = 280;
 const MAX_COMPANION_WIDTH = 520;
-const DEFAULT_TITLEBAR_HEIGHT = 40;
 const SIDEBAR_AREA_PATTERN = /^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_./-]*$/i;
 
 interface SidebarChoice {
@@ -432,24 +431,6 @@ function resolveCompanionWidth( source: EditorSidecarWindowLike ): number {
 	return fallbackCompanionWidth();
 }
 
-function sourceTitlebarHeight( source: EditorSidecarWindowLike ): number {
-	const titlebar = source.element?.querySelector< HTMLElement >(
-		':scope > .os-window__titlebar',
-	);
-	const measured = titlebar?.getBoundingClientRect().height ?? 0;
-	if ( measured > 0 ) {
-		return measured;
-	}
-	const token = source.element
-		? Number.parseFloat(
-			window
-				.getComputedStyle( source.element )
-				.getPropertyValue( '--os-titlebar-height' ),
-		)
-		: 0;
-	return token > 0 ? token : DEFAULT_TITLEBAR_HEIGHT;
-}
-
 function companionGeometry(
 	source: EditorSidecarWindowLike,
 	width: number,
@@ -489,15 +470,11 @@ function companionGeometry(
 		element.style.top = `${ sourceY }px`;
 		element.style.width = `${ sourceWidth }px`;
 	}
-	const titlebarHeight = Math.min(
-		sourceHeight,
-		sourceTitlebarHeight( source ),
-	);
 	return {
 		x: rtl ? sourceX - width : sourceX + sourceWidth,
-		y: sourceY + titlebarHeight,
+		y: sourceY,
 		width,
-		height: Math.max( 1, sourceHeight - titlebarHeight ),
+		height: sourceHeight,
 	};
 }
 
@@ -657,16 +634,12 @@ export function bootEditorSidecar( {
 		}
 		const width = companionWidths.get( sourceId ) ?? companion.element.offsetWidth;
 		const rtl = window.getComputedStyle( source.element ).direction === 'rtl';
-		const titlebarHeight = sourceTitlebarHeight( source );
 		source.element.style.left = `${
 			rtl ? x + width : x - source.element.offsetWidth
 		}px`;
-		source.element.style.top = `${ y - titlebarHeight }px`;
+		source.element.style.top = `${ y }px`;
 		companion.element.style.width = `${ width }px`;
-		companion.element.style.height = `${ Math.max(
-			1,
-			source.element.offsetHeight - sourceTitlebarHeight( source ),
-		) }px`;
+		companion.element.style.height = `${ source.element.offsetHeight }px`;
 	};
 
 	const setPairReflowing = ( windowId: string, reflowing: boolean ): void => {
