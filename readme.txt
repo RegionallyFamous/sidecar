@@ -169,6 +169,7 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 == Changelog ==
 
 = 1.1.0 =
+* Add the connected Gutenberg Sidebar Window as a narrow, managed sibling that keeps the source post editable.
 * Consolidate navigation into a single dock
 * Notes: Merge the sticky-notes into pinned notes
 * Confirm dialog: route Enter to the focused button, trap and restore focus

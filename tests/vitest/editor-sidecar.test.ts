@@ -18,6 +18,11 @@ const STORAGE_KEY = 'openstation.editorSidecar.activeWindows';
 
 interface FrameWindow {
 	document: Document;
+	history?: {
+		state: unknown;
+		replaceState: ReturnType< typeof vi.fn >;
+	};
+	location?: { href: string };
 	wp?: {
 		data?: {
 			select?: ( store: string ) => Record< string, unknown > | undefined;
@@ -35,10 +40,16 @@ interface FakeWindow {
 		title?: string;
 		ephemeral?: boolean;
 		initialState?: string;
+		x?: number;
+		y?: number;
+		width?: number;
+		height?: number;
+		minWidth?: number;
 		onClose?: () => void;
 	};
 	iframe: HTMLIFrameElement | null;
 	element: HTMLElement;
+	state: string;
 	maximize: ReturnType< typeof vi.fn >;
 	applySnap: ReturnType< typeof vi.fn >;
 	renderCustomTitleBarButtons: ReturnType< typeof vi.fn >;
@@ -46,6 +57,7 @@ interface FakeWindow {
 	close: ReturnType< typeof vi.fn >;
 	destroy: ReturnType< typeof vi.fn >;
 	acceptClose: ReturnType< typeof vi.fn >;
+	setRect: ( next: Partial< { x: number; y: number; width: number; height: number } > ) => void;
 }
 
 function gutenbergFrame( activeArea: string | null = 'edit-post/document' ): FrameWindow {
@@ -90,17 +102,35 @@ function fakeWindow( id: string, frame = gutenbergFrame() ): FakeWindow {
 		configurable: true,
 		value: 1200,
 	} );
-	vi.spyOn( element, 'getBoundingClientRect' ).mockReturnValue( {
-		width: 720,
-		height: 600,
-		top: 0,
-		right: 720,
-		bottom: 600,
-		left: 0,
-		x: 0,
-		y: 0,
+	let rect = { x: 100, y: 80, width: 720, height: 600 };
+	vi.spyOn( element, 'getBoundingClientRect' ).mockImplementation( () => ( {
+		...rect,
+		top: rect.y,
+		right: rect.x + rect.width,
+		bottom: rect.y + rect.height,
+		left: rect.x,
 		toJSON: () => ( {} ),
-	} );
+	} ) );
+	for ( const [ property, key ] of [
+		[ 'offsetLeft', 'x' ],
+		[ 'offsetTop', 'y' ],
+		[ 'offsetWidth', 'width' ],
+		[ 'offsetHeight', 'height' ],
+	] as const ) {
+		Object.defineProperty( element, property, {
+			configurable: true,
+			get: () => {
+				const styleProperty = {
+					x: 'left',
+					y: 'top',
+					width: 'width',
+					height: 'height',
+				}[ key ] as 'left' | 'top' | 'width' | 'height';
+				const styled = Number.parseFloat( element.style[ styleProperty ] );
+				return Number.isFinite( styled ) ? styled : rect[ key ];
+			},
+		} );
+	}
 	const win: FakeWindow = {
 		id,
 		config: {
@@ -108,6 +138,7 @@ function fakeWindow( id: string, frame = gutenbergFrame() ): FakeWindow {
 		},
 		iframe,
 		element,
+		state: 'normal',
 		maximize: vi.fn(),
 		applySnap: vi.fn(),
 		renderCustomTitleBarButtons: vi.fn(),
@@ -116,6 +147,20 @@ function fakeWindow( id: string, frame = gutenbergFrame() ): FakeWindow {
 		close: vi.fn(),
 		destroy: vi.fn(),
 		acceptClose: vi.fn( () => win.config.onClose?.() ),
+		setRect: ( next ) => {
+			for ( const [ key, value ] of Object.entries( next ) ) {
+				if ( typeof value === 'number' ) {
+					rect[ key as keyof typeof rect ] = value;
+					const styleProperty = {
+						x: 'left',
+						y: 'top',
+						width: 'width',
+						height: 'height',
+					}[ key ] as 'left' | 'top' | 'width' | 'height';
+					element.style[ styleProperty ] = `${ value }px`;
+				}
+			}
+		},
 	};
 	return win;
 }
@@ -123,16 +168,41 @@ function fakeWindow( id: string, frame = gutenbergFrame() ): FakeWindow {
 function fakeManager() {
 	const desktop = document.createElement( 'div' );
 	desktop.className = 'os-area';
-	Object.defineProperty( desktop, 'clientWidth', {
-		configurable: true,
-		value: 1200,
+	let desktopSize = { width: 1200, height: 800 };
+	Object.defineProperties( desktop, {
+		clientWidth: {
+			configurable: true,
+			get: () => desktopSize.width,
+		},
+		clientHeight: {
+			configurable: true,
+			get: () => desktopSize.height,
+		},
 	} );
 	document.body.appendChild( desktop );
 	const windows = new Map< string, FakeWindow >();
 	const mount = ( config: FakeWindow[ 'config' ] & { id: string } ) => {
 		const win = fakeWindow( config.id );
 		win.config = { ...config };
+		win.state = config.initialState ?? 'normal';
 		win.getCurrentUrl = () => config.url ?? '';
+		for ( const property of [ 'left', 'top', 'width', 'height' ] as const ) {
+			const value =
+				property === 'left'
+					? config.x
+					: property === 'top'
+						? config.y
+						: config[ property ];
+			if ( typeof value === 'number' ) {
+				win.element.style[ property ] = `${ value }px`;
+			}
+		}
+		win.setRect( {
+			x: config.x,
+			y: config.y,
+			width: config.width,
+			height: config.height,
+		} );
 		desktop.appendChild( win.element );
 		windows.set( win.id, win );
 		return win;
@@ -152,6 +222,9 @@ function fakeManager() {
 		remove( id: string ) {
 			windows.get( id )?.element.remove();
 			windows.delete( id );
+		},
+		setDesktopSize( next: Partial< typeof desktopSize > ) {
+			desktopSize = { ...desktopSize, ...next };
 		},
 		getById( id: string ) {
 			return windows.get( id ) ?? null;
@@ -219,6 +292,7 @@ let hooks: FakeWpHooks;
 beforeEach( () => {
 	hooks = installHooksStub();
 	window.localStorage.clear();
+	document.documentElement.dir = 'ltr';
 } );
 
 afterEach( () => {
@@ -228,6 +302,7 @@ afterEach( () => {
 	vi.useRealTimers();
 	vi.restoreAllMocks();
 	document.body.innerHTML = '';
+	document.documentElement.removeAttribute( 'dir' );
 } );
 
 describe( 'bootEditorSidecar', () => {
@@ -271,7 +346,7 @@ describe( 'bootEditorSidecar', () => {
 		expect( def.match( companionByUrl as never ) ).toBe( false );
 	} );
 
-	test( 'opens a managed sibling beside the editor without replacing its iframe', async () => {
+	test( 'opens a narrow floating sibling directly beside the unchanged editor', async () => {
 		const { manager, def } = await boot();
 		const frame = gutenbergFrame( 'yoast-seo/sidebar' );
 		const editor = fakeWindow( 'post-17', frame );
@@ -286,20 +361,31 @@ describe( 'bootEditorSidecar', () => {
 			baseId: 'post-17--sidebar-window',
 			title: 'Sidebar Window',
 			ephemeral: true,
-			initialState: 'snapped-right',
+			x: 820,
+			y: 80,
+			width: 320,
+			height: 600,
 		} );
+		expect( config.initialState ?? 'normal' ).toBe( 'normal' );
 		const companionUrl = new URL( config.url!, window.location.origin );
 		expect( companionUrl.searchParams.get( 'openstation_sidebar_window' ) ).toBe(
 			'1',
 		);
 		expect( companionUrl.searchParams.get( 'action' ) ).toBe( 'edit' );
-		expect( editor.applySnap ).toHaveBeenCalledWith( 'left' );
+		expect( editor.applySnap ).not.toHaveBeenCalled();
+		expect( editor.maximize ).not.toHaveBeenCalled();
+		expect( editor.state ).toBe( 'normal' );
 		expect( frame.postMessage ).toHaveBeenCalledWith(
 			{ type: 'os-editor-sidecar-source', parked: true },
 			window.location.origin,
 		);
 
 		const companion = manager.getById( 'post-17--sidebar-window' )!;
+		expect( companion.state ).toBe( 'normal' );
+		expect( companion.element.style.left ).toBe( '820px' );
+		expect( companion.element.style.top ).toBe( '80px' );
+		expect( companion.element.style.width ).toBe( '320px' );
+		expect( companion.element.style.height ).toBe( '600px' );
 		expect( companion.element.parentElement ).toBe( editor.element.parentElement );
 		expect( editor.element.contains( companion.element ) ).toBe( false );
 		expect( editor.iframe ).toBe( originalIframe );
@@ -311,6 +397,191 @@ describe( 'bootEditorSidecar', () => {
 		const repainted = renderButton( def, editor );
 		expect( host.getAttribute( 'aria-pressed' ) ).toBe( 'false' );
 		expect( repainted.getAttribute( 'aria-pressed' ) ).toBe( 'true' );
+	} );
+
+	test( 'reflows the floating sibling when the source moves or resizes', async () => {
+		const { manager, def } = await boot();
+		const editor = fakeWindow( 'post-geometry' );
+		manager.add( editor );
+		await clickButton( def, editor );
+		const companion = manager.getById( 'post-geometry--sidebar-window' )!;
+
+		editor.setRect( { x: 140, y: 120 } );
+		hooks.doAction( HOOKS.WINDOW_BOUNDS_CHANGED, {
+			windowId: editor.id,
+			x: 140,
+			y: 120,
+			width: 720,
+			height: 600,
+			state: 'normal',
+			phase: 'drag',
+		} );
+
+		expect( companion.element.style.left ).toBe( '860px' );
+		expect( companion.element.style.top ).toBe( '120px' );
+		expect( companion.element.style.width ).toBe( '320px' );
+		expect( companion.element.style.height ).toBe( '600px' );
+
+		editor.setRect( { width: 760, height: 660 } );
+		hooks.doAction( HOOKS.WINDOW_BOUNDS_CHANGED, {
+			windowId: editor.id,
+			x: 140,
+			y: 120,
+			width: 760,
+			height: 660,
+			state: 'normal',
+			phase: 'resize',
+		} );
+
+		expect( companion.element.style.left ).toBe( '900px' );
+		expect( companion.element.style.top ).toBe( '120px' );
+		expect( companion.element.style.width ).toBe( '320px' );
+		expect( companion.element.style.height ).toBe( '660px' );
+		expect( editor.applySnap ).not.toHaveBeenCalled();
+	} );
+
+	test( 'restores fitted source geometry on accepted close and clamps it to the current desktop', async () => {
+		const { manager, def } = await boot();
+		const editor = fakeWindow( 'post-edge-restore' );
+		editor.setRect( { x: 200, y: 80, width: 1000, height: 600 } );
+		manager.add( editor );
+
+		await clickButton( def, editor );
+		const companion = manager.getById(
+			'post-edge-restore--sidebar-window',
+		)!;
+
+		// Fitting the 320px companion temporarily shrinks and repositions the source.
+		expect( editor.element.style.left ).toBe( '0px' );
+		expect( editor.element.style.top ).toBe( '80px' );
+		expect( editor.element.style.width ).toBe( '880px' );
+		expect( companion.element.style.left ).toBe( '880px' );
+
+		// The desktop may resize while the pair is open. Restore the original
+		// 1000px width, but keep its old position inside the new 1100x650 bounds.
+		manager.setDesktopSize( { width: 1100, height: 650 } );
+		companion.acceptClose();
+
+		expect( editor.element.style.left ).toBe( '100px' );
+		expect( editor.element.style.top ).toBe( '50px' );
+		expect( editor.element.style.width ).toBe( '1000px' );
+	} );
+
+	test( 'uses the source Gutenberg sidebar width when it is measurable', async () => {
+		const { manager, def } = await boot();
+		const frame = gutenbergFrame();
+		const sidebar = frame.document.createElement( 'aside' );
+		sidebar.className = 'interface-interface-skeleton__sidebar';
+		frame.document.body.appendChild( sidebar );
+		vi.spyOn( sidebar, 'getBoundingClientRect' ).mockReturnValue( {
+			x: 0,
+			y: 0,
+			left: 0,
+			top: 0,
+			right: 296,
+			bottom: 600,
+			width: 296,
+			height: 600,
+			toJSON: () => ( {} ),
+		} );
+		const editor = fakeWindow( 'post-measured-width', frame );
+		manager.add( editor );
+
+		await clickButton( def, editor );
+
+		expect( manager.open ).toHaveBeenCalledWith(
+			expect.objectContaining( {
+				x: 820,
+				width: 296,
+				minWidth: 296,
+			} ),
+		);
+	} );
+
+	test( 'auto-opens the demo sidebar once and consumes its URL marker', async () => {
+		const { manager } = await boot();
+		const frame = gutenbergFrame( 'yoast-seo/sidebar' );
+		const sourceUrl = new URL(
+			'/wp-admin/post.php?post=77&action=edit&openstation_sidebar_window_auto=1#editor',
+			window.location.origin,
+		).toString();
+		frame.location = { href: sourceUrl };
+		frame.history = {
+			state: { editor: true },
+			replaceState: vi.fn( ( _state, _title, nextUrl ) => {
+				frame.location!.href = new URL(
+					String( nextUrl ),
+					frame.location!.href,
+				).toString();
+			} ),
+		};
+		const editor = fakeWindow( 'post-auto-demo', frame );
+		editor.config.url = sourceUrl;
+		editor.getCurrentUrl = () => frame.location!.href;
+		manager.add( editor );
+
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: editor.id } );
+		await flushMicrotasks();
+
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
+		const config = manager.open.mock.calls[ 0 ][ 0 ];
+		expect( config ).toMatchObject( {
+			id: 'post-auto-demo--sidebar-window',
+			x: 820,
+			y: 80,
+			width: 320,
+			height: 600,
+		} );
+		const companionUrl = new URL( config.url!, window.location.origin );
+		expect( companionUrl.searchParams.get( 'openstation_sidebar_window' ) ).toBe(
+			'1',
+		);
+		expect(
+			companionUrl.searchParams.has( 'openstation_sidebar_window_auto' ),
+		).toBe( false );
+		expect(
+			new URL( editor.config.url!, window.location.origin ).searchParams.has(
+				'openstation_sidebar_window_auto',
+			),
+		).toBe( false );
+		expect( frame.history.replaceState ).toHaveBeenCalledTimes( 1 );
+		const replacedUrl = new URL(
+			String( frame.history.replaceState.mock.calls[ 0 ][ 2 ] ),
+			sourceUrl,
+		);
+		expect(
+			replacedUrl.searchParams.has( 'openstation_sidebar_window_auto' ),
+		).toBe( false );
+		expect( replacedUrl.searchParams.get( 'post' ) ).toBe( '77' );
+		expect( replacedUrl.hash ).toBe( '#editor' );
+		expect( frame.postMessage ).toHaveBeenCalledWith(
+			{ type: 'os-editor-sidecar-source', parked: true },
+			window.location.origin,
+		);
+
+		const companion = manager.getById( config.id )!;
+		const companionFrame =
+			companion.iframe!.contentWindow as unknown as FrameWindow;
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: companion.id } );
+		await flushMicrotasks();
+
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
+		expect( companionFrame.postMessage ).toHaveBeenCalledWith(
+			{
+				type: 'os-editor-sidecar-set',
+				active: true,
+				detached: true,
+				area: 'yoast-seo/sidebar',
+			},
+			window.location.origin,
+		);
+
+		companion.acceptClose();
+		manager.remove( companion.id );
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: editor.id } );
+		await flushMicrotasks();
+
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
 	} );
 
 	test( 'activates the companion only after its iframe is ready', async () => {
@@ -465,11 +736,64 @@ describe( 'bootEditorSidecar', () => {
 		expect( manager.open ).toHaveBeenCalledWith(
 			expect.objectContaining( {
 				id: 'post-33--sidebar-window',
-				initialState: 'snapped-right',
+				width: 320,
+				height: 600,
 			} ),
 		);
 		expect( editor.renderCustomTitleBarButtons ).toHaveBeenCalledTimes( 1 );
 		expect( editor.applySnap ).not.toHaveBeenCalled();
+	} );
+
+	test( 'consumes the auto-open marker before restoring a persisted sibling', async () => {
+		window.localStorage.setItem(
+			STORAGE_KEY,
+			JSON.stringify( [ 'post-persisted-auto' ] ),
+		);
+		const { manager } = await boot();
+		const frame = gutenbergFrame();
+		const sourceUrl = new URL(
+			'/wp-admin/post.php?post=88&action=edit&openstation_sidebar_window_auto=1',
+			window.location.origin,
+		).toString();
+		frame.location = { href: sourceUrl };
+		frame.history = {
+			state: { editor: true },
+			replaceState: vi.fn( ( _state, _title, nextUrl ) => {
+				frame.location!.href = new URL(
+					String( nextUrl ),
+					frame.location!.href,
+				).toString();
+			} ),
+		};
+		const editor = fakeWindow( 'post-persisted-auto', frame );
+		editor.config.url = sourceUrl;
+		editor.getCurrentUrl = () => frame.location!.href;
+		manager.add( editor );
+
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: editor.id } );
+		await flushMicrotasks();
+
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
+		const config = manager.open.mock.calls[ 0 ][ 0 ];
+		expect(
+			new URL( config.url!, window.location.origin ).searchParams.has(
+				'openstation_sidebar_window_auto',
+			),
+		).toBe( false );
+		expect(
+			new URL( editor.config.url!, window.location.origin ).searchParams.has(
+				'openstation_sidebar_window_auto',
+			),
+		).toBe( false );
+		expect( frame.history.replaceState ).toHaveBeenCalledTimes( 1 );
+
+		const companion = manager.getById( config.id )!;
+		companion.acceptClose();
+		manager.remove( companion.id );
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: editor.id } );
+		await flushMicrotasks();
+
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
 	} );
 
 	test( 'waits for Gutenberg stores and DOM that mount after bridge readiness', async () => {
