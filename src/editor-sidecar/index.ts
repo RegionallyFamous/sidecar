@@ -22,6 +22,7 @@ import { createSharedStore } from '../shared-store';
 import { registerTitleBarButton } from '../title-bar-buttons/registry';
 import '../ui/components/os-context-menu/os-context-menu';
 import '../ui/components/os-select/os-select';
+import '../ui/components/os-window-button/os-window-button';
 
 const ACTIVE_STORAGE_KEY = 'openstation.editorSidecar.activeWindows';
 const MAX_PERSISTED_IDS = 64;
@@ -617,6 +618,10 @@ export function bootEditorSidecar( {
 		companion.element.style.top = `${ geometry.y }px`;
 		companion.element.style.width = `${ geometry.width }px`;
 		companion.element.style.height = `${ geometry.height }px`;
+		source.element.style.setProperty(
+			'--os-editor-sidecar-companion-width',
+			`${ geometry.width }px`,
+		);
 		source.element.classList.add( 'os-window--editor-sidecar-source' );
 		companion.element.classList.add( 'os-window--editor-sidecar-companion' );
 	};
@@ -670,6 +675,10 @@ export function bootEditorSidecar( {
 			companion.element.style.top = `${ geometry.y }px`;
 			companion.element.style.width = `${ geometry.width }px`;
 			companion.element.style.height = `${ geometry.height }px`;
+			source.element.style.setProperty(
+				'--os-editor-sidecar-companion-width',
+				`${ geometry.width }px`,
+			);
 			source.element.classList.add( 'os-window--editor-sidecar-source' );
 			companion.element.classList.add(
 				'os-window--editor-sidecar-companion',
@@ -694,6 +703,7 @@ export function bootEditorSidecar( {
 		const companion = manager.getById( companionId( sourceId ) );
 		companion?.element?.classList.remove(
 			'os-window--editor-sidecar-companion',
+			'os-window--editor-sidecar-pair-focused',
 			'os-window--reflowing',
 		);
 		if ( source ) {
@@ -722,7 +732,11 @@ export function bootEditorSidecar( {
 			}
 			source.element?.classList.remove(
 				'os-window--editor-sidecar-source',
+				'os-window--editor-sidecar-pair-focused',
 				'os-window--reflowing',
+			);
+			source.element?.style.removeProperty(
+				'--os-editor-sidecar-companion-width',
 			);
 			const handlers = sourceSnapHandlers.get( sourceId );
 			if ( handlers ) {
@@ -779,6 +793,10 @@ export function bootEditorSidecar( {
 
 		const width = resolveCompanionWidth( source );
 		companionWidths.set( source.id, width );
+		source.element?.style.setProperty(
+			'--os-editor-sidecar-companion-width',
+			`${ width }px`,
+		);
 		rememberSourceGeometry( source );
 		const geometry = companionGeometry( source, width, true );
 		if ( ! geometry ) {
@@ -947,6 +965,7 @@ export function bootEditorSidecar( {
 			select = document.createElement( 'os-select' ) as SidebarPanelSelect;
 			select.classList.add( 'os-editor-sidecar-panel-select' );
 			select.setAttribute( 'label', __( 'Sidebar panel' ) );
+			select.setAttribute( 'compact', '' );
 			select.addEventListener( 'os-pick', ( event: Event ) => {
 				const value = ( event as CustomEvent< { value?: string } > ).detail
 					?.value;
@@ -955,6 +974,24 @@ export function bootEditorSidecar( {
 				}
 			} );
 			slot.appendChild( select );
+		}
+		let close = slot.querySelector< HTMLElement >(
+			'os-window-button.os-editor-sidecar-panel-close',
+		);
+		if ( ! close ) {
+			close = document.createElement( 'os-window-button' );
+			close.classList.add(
+				'os-window__btn',
+				'os-editor-sidecar-panel-close',
+			);
+			close.setAttribute( 'icon', 'close' );
+			close.setAttribute( 'danger', '' );
+			close.setAttribute( 'aria-label', __( 'Close Sidebar Window' ) );
+			close.addEventListener( 'click', ( event ) => {
+				event.stopPropagation();
+				requestCompanionClose( source.id );
+			} );
+			slot.appendChild( close );
 		}
 		syncCompanionPanelSelector( source.id );
 	}
@@ -1136,16 +1173,48 @@ export function bootEditorSidecar( {
 		HOOKS.WINDOW_FOCUSED,
 		'desktop-mode/editor-sidecar-focus-pair',
 		( event: { windowId?: string } ) => {
-			if ( ! event?.windowId || ! manager.raise ) {
+			if ( ! event?.windowId ) {
 				return;
+			}
+			for ( const activeSourceId of store.state.activeEditors ) {
+				manager
+					.getById( activeSourceId )
+					?.element?.classList.remove(
+						'os-window--editor-sidecar-pair-focused',
+					);
+				manager
+					.getById( companionId( activeSourceId ) )
+					?.element?.classList.remove(
+						'os-window--editor-sidecar-pair-focused',
+					);
 			}
 			const sourceId = sourceIdFromCompanion( event.windowId );
 			if ( sourceId && store.state.activeEditors.has( sourceId ) ) {
-				manager.raise( sourceId );
+				manager
+					.getById( sourceId )
+					?.element?.classList.add(
+						'os-window--editor-sidecar-pair-focused',
+					);
+				manager
+					.getById( companionId( sourceId ) )
+					?.element?.classList.add(
+						'os-window--editor-sidecar-pair-focused',
+					);
+				manager.raise?.( sourceId );
 				return;
 			}
 			if ( store.state.activeEditors.has( event.windowId ) ) {
-				manager.raise( companionId( event.windowId ) );
+				manager
+					.getById( event.windowId )
+					?.element?.classList.add(
+						'os-window--editor-sidecar-pair-focused',
+					);
+				manager
+					.getById( companionId( event.windowId ) )
+					?.element?.classList.add(
+						'os-window--editor-sidecar-pair-focused',
+					);
+				manager.raise?.( companionId( event.windowId ) );
 			}
 		},
 	);
