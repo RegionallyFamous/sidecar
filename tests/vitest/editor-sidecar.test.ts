@@ -756,7 +756,7 @@ describe( 'bootEditorSidecar', () => {
 		expect( manager.open ).toHaveBeenCalledTimes( 1 );
 	} );
 
-	test( 'opens a narrow floating sibling directly beside the unchanged editor', async () => {
+	test( 'opens a narrow inspector drawer beside the editor body', async () => {
 		const { manager, def } = await boot();
 		const frame = gutenbergFrame( 'yoast-seo/sidebar' );
 		const editor = fakeWindow( 'post-17', frame );
@@ -772,9 +772,9 @@ describe( 'bootEditorSidecar', () => {
 			title: 'Sidebar Window',
 			ephemeral: true,
 			x: 820,
-			y: 80,
+			y: 120,
 			width: 320,
-			height: 600,
+			height: 560,
 		} );
 		expect( config.initialState ?? 'normal' ).toBe( 'normal' );
 		const companionUrl = new URL( config.url!, window.location.origin );
@@ -793,14 +793,9 @@ describe( 'bootEditorSidecar', () => {
 		const companion = manager.getById( 'post-17--sidebar-window' )!;
 		expect( companion.state ).toBe( 'normal' );
 		expect( companion.element.style.left ).toBe( '820px' );
-		expect( companion.element.style.top ).toBe( '80px' );
+		expect( companion.element.style.top ).toBe( '120px' );
 		expect( companion.element.style.width ).toBe( '320px' );
-		expect( companion.element.style.height ).toBe( '600px' );
-		expect(
-			editor.element.style.getPropertyValue(
-				'--os-editor-sidecar-companion-width',
-			),
-		).toBe( '320px' );
+		expect( companion.element.style.height ).toBe( '560px' );
 		expect( companion.element.parentElement ).toBe( editor.element.parentElement );
 		expect( editor.element.contains( companion.element ) ).toBe( false );
 		expect( editor.iframe ).toBe( originalIframe );
@@ -833,9 +828,9 @@ describe( 'bootEditorSidecar', () => {
 		} );
 
 		expect( companion.element.style.left ).toBe( '860px' );
-		expect( companion.element.style.top ).toBe( '120px' );
+		expect( companion.element.style.top ).toBe( '160px' );
 		expect( companion.element.style.width ).toBe( '320px' );
-		expect( companion.element.style.height ).toBe( '600px' );
+		expect( companion.element.style.height ).toBe( '560px' );
 
 		editor.setRect( { width: 760, height: 660 } );
 		hooks.doAction( HOOKS.WINDOW_BOUNDS_CHANGED, {
@@ -849,9 +844,9 @@ describe( 'bootEditorSidecar', () => {
 		} );
 
 		expect( companion.element.style.left ).toBe( '900px' );
-		expect( companion.element.style.top ).toBe( '120px' );
+		expect( companion.element.style.top ).toBe( '160px' );
 		expect( companion.element.style.width ).toBe( '320px' );
-		expect( companion.element.style.height ).toBe( '660px' );
+		expect( companion.element.style.height ).toBe( '620px' );
 		expect( editor.applySnap ).not.toHaveBeenCalled();
 	} );
 
@@ -880,11 +875,6 @@ describe( 'bootEditorSidecar', () => {
 		expect( editor.element.style.left ).toBe( '100px' );
 		expect( editor.element.style.top ).toBe( '50px' );
 		expect( editor.element.style.width ).toBe( '1000px' );
-		expect(
-			editor.element.style.getPropertyValue(
-				'--os-editor-sidecar-companion-width',
-			),
-		).toBe( '' );
 	} );
 
 	test( 'uses the source Gutenberg sidebar width when it is measurable', async () => {
@@ -950,9 +940,9 @@ describe( 'bootEditorSidecar', () => {
 		expect( config ).toMatchObject( {
 			id: 'post-auto-demo--sidebar-window',
 			x: 820,
-			y: 80,
+			y: 120,
 			width: 320,
-			height: 600,
+			height: 560,
 		} );
 		const companionUrl = new URL( config.url!, window.location.origin );
 		expect( companionUrl.searchParams.get( 'openstation_sidebar_window' ) ).toBe(
@@ -1157,7 +1147,7 @@ describe( 'bootEditorSidecar', () => {
 			expect.objectContaining( {
 				id: 'post-33--sidebar-window',
 				width: 320,
-				height: 600,
+				height: 560,
 			} ),
 		);
 		expect( editor.renderCustomTitleBarButtons ).toHaveBeenCalledTimes( 1 );
