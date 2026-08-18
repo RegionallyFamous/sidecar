@@ -21,7 +21,6 @@ import { __ } from '../i18n';
 import { createSharedStore } from '../shared-store';
 import { registerTitleBarButton } from '../title-bar-buttons/registry';
 import '../ui/components/os-context-menu/os-context-menu';
-import '../ui/components/os-select/os-select';
 import '../ui/components/os-window-button/os-window-button';
 
 const ACTIVE_STORAGE_KEY = 'openstation.editorSidecar.activeWindows';
@@ -40,11 +39,6 @@ const SIDEBAR_AREA_PATTERN = /^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_./-]*$/i;
 interface SidebarChoice {
 	area: string;
 	label: string;
-}
-
-interface SidebarPanelSelect extends HTMLElement {
-	items: ReadonlyArray< { value: string; label: string } >;
-	value: string;
 }
 
 type WindowState =
@@ -254,6 +248,14 @@ function humanizeSidebarArea( area: string ): string {
 		.replace( /\b\w/g, ( character ) => character.toUpperCase() );
 }
 
+function sidebarAreaForControl( control: Element ): string | null {
+	const area = ( control.getAttribute( 'aria-controls' ) ?? '' ).replace(
+		':',
+		'/',
+	);
+	return SIDEBAR_AREA_PATTERN.test( area ) ? area : null;
+}
+
 /**
  * Gutenberg does not expose a public selector that enumerates registered
  * complementary areas. Its own area toggles do expose the identifier through
@@ -271,9 +273,8 @@ function sidebarChoices( win: EditorSidecarWindowLike ): SidebarChoice[] {
 		const controls =
 			frame?.document.querySelectorAll< HTMLElement >( '[aria-controls]' );
 		for ( const control of controls ?? [] ) {
-			const controlled = control.getAttribute( 'aria-controls' ) ?? '';
-			const area = controlled.replace( ':', '/' );
-			if ( ! SIDEBAR_AREA_PATTERN.test( area ) ) {
+			const area = sidebarAreaForControl( control );
+			if ( ! area ) {
 				continue;
 			}
 			const label =
@@ -293,6 +294,59 @@ function sidebarChoices( win: EditorSidecarWindowLike ): SidebarChoice[] {
 		choices.set( current, humanizeSidebarArea( current ) );
 	}
 	return Array.from( choices, ( [ area, label ] ) => ( { area, label } ) );
+}
+
+/**
+ * Reuse Gutenberg's own sidebar-toggle artwork in the connected title bar.
+ * The source controls are same-origin, but their DOM belongs to another
+ * document, so import only the inert icon node rather than moving the button.
+ */
+function sidebarChoiceIcon(
+	source: EditorSidecarWindowLike,
+	area: string,
+): Element {
+	try {
+		const controls = frameWindow( source )?.document.querySelectorAll(
+			'[aria-controls]',
+		);
+		for ( const control of controls ?? [] ) {
+			if ( sidebarAreaForControl( control ) !== area ) {
+				continue;
+			}
+			const icon = control.querySelector( 'svg, img, .dashicons' );
+			if ( icon ) {
+				const imported = document.importNode( icon, true ) as Element;
+				for ( const node of [
+					imported,
+					...Array.from( imported.querySelectorAll( '[id]' ) ),
+				] ) {
+					node.removeAttribute( 'id' );
+					node.removeAttribute( 'aria-labelledby' );
+					node.removeAttribute( 'aria-describedby' );
+				}
+				imported.setAttribute( 'aria-hidden', 'true' );
+				imported.classList.add( 'os-editor-sidecar-panel-icon' );
+				return imported;
+			}
+		}
+	} catch {
+		/* The source may be between same-origin navigations. */
+	}
+
+	const fallback = document.createElement( 'span' );
+	let fallbackIcon = 'dashicons-admin-plugins';
+	if ( area === 'edit-post/block' ) {
+		fallbackIcon = 'dashicons-screenoptions';
+	} else if ( area.startsWith( 'edit-post/' ) ) {
+		fallbackIcon = 'dashicons-admin-generic';
+	}
+	fallback.classList.add(
+		'dashicons',
+		fallbackIcon,
+		'os-editor-sidecar-panel-icon',
+	);
+	fallback.setAttribute( 'aria-hidden', 'true' );
+	return fallback;
 }
 
 function postMessageTo(
@@ -570,7 +624,7 @@ export function bootEditorSidecar( {
 				);
 			} );
 			if ( addedControl ) {
-				syncCompanionPanelSelector( source.id );
+				syncCompanionPanelButtons( source.id );
 			}
 		} );
 		observer.observe( root, {
@@ -811,7 +865,7 @@ export function bootEditorSidecar( {
 						'after-titlebar': {
 							replace: true,
 							render: ( host ) => {
-								mountCompanionPanelSelector( source, host );
+								mountCompanionPanelButtons( source, host );
 							},
 						},
 					},
@@ -873,7 +927,7 @@ export function bootEditorSidecar( {
 		area: string,
 	): void => {
 		areaBySource.set( source.id, area );
-		syncCompanionPanelSelector( source.id );
+		syncCompanionPanelButtons( source.id );
 		if ( ! store.state.activeEditors.has( source.id ) ) {
 			void openCompanion( source, area );
 			return;
@@ -900,55 +954,72 @@ export function bootEditorSidecar( {
 			: 'edit-post/document';
 	}
 
-	function syncCompanionPanelSelector( sourceId: string ): void {
+	function syncCompanionPanelButtons( sourceId: string ): void {
 		const source = manager.getById( sourceId );
 		const companion = manager.getById( companionId( sourceId ) );
-		const select = companion?.element?.querySelector< SidebarPanelSelect >(
-			'os-select.os-editor-sidecar-panel-select',
+		const toolbar = companion?.element?.querySelector< HTMLElement >(
+			'.os-editor-sidecar-panel-buttons',
 		);
-		if ( ! source || ! select ) {
+		if ( ! source || ! toolbar ) {
 			return;
 		}
-		const items = availableSidebarChoices( source ).map( ( choice ) => ( {
-			value: choice.area,
-			label: choice.label,
-		} ) );
-		const currentItems = Array.from(
-			select.querySelectorAll< HTMLElement >( ':scope > os-option' ),
-		).map( ( option ) => ( {
-			value: option.getAttribute( 'value' ) ?? '',
-			label: option.textContent?.trim() ?? '',
-		} ) );
-		if ( JSON.stringify( currentItems ) !== JSON.stringify( items ) ) {
-			select.items = items;
-		}
 		const selected = selectedSidebarArea( sourceId );
-		if ( select.getAttribute( 'value' ) !== selected ) {
-			select.value = selected;
-			select.setAttribute( 'value', selected );
+		const existing = new Map(
+			Array.from(
+				toolbar.querySelectorAll< HTMLElement >(
+					':scope > os-window-button[data-sidebar-area]',
+				),
+			).map( ( button ) => [ button.dataset.sidebarArea ?? '', button ] ),
+		);
+		const keep = new Set< string >();
+		for ( const choice of availableSidebarChoices( source ) ) {
+			keep.add( choice.area );
+			let button = existing.get( choice.area );
+			if ( ! button ) {
+				button = document.createElement( 'os-window-button' );
+				button.classList.add(
+					'os-window__btn',
+					'os-editor-sidecar-panel-button',
+				);
+				button.dataset.sidebarArea = choice.area;
+				button.addEventListener( 'click', ( event ) => {
+					event.stopPropagation();
+					const area = button?.dataset.sidebarArea ?? '';
+					if ( SIDEBAR_AREA_PATTERN.test( area ) ) {
+						chooseSidebarArea( source, area );
+					}
+				} );
+			}
+			button.setAttribute( 'aria-label', choice.label );
+			button.setAttribute( 'title', choice.label );
+			button.setAttribute(
+				'aria-pressed',
+				String( choice.area === selected ),
+			);
+			button.toggleAttribute( 'active', choice.area === selected );
+			button.replaceChildren( sidebarChoiceIcon( source, choice.area ) );
+			toolbar.appendChild( button );
+		}
+		for ( const [ area, button ] of existing ) {
+			if ( ! keep.has( area ) ) {
+				button.remove();
+			}
 		}
 	}
 
-	function mountCompanionPanelSelector(
+	function mountCompanionPanelButtons(
 		source: EditorSidecarWindowLike,
 		slot: HTMLElement,
 	): void {
-		let select = slot.querySelector< SidebarPanelSelect >(
-			'os-select.os-editor-sidecar-panel-select',
+		let toolbar = slot.querySelector< HTMLElement >(
+			'.os-editor-sidecar-panel-buttons',
 		);
-		if ( ! select ) {
-			select = document.createElement( 'os-select' ) as SidebarPanelSelect;
-			select.classList.add( 'os-editor-sidecar-panel-select' );
-			select.setAttribute( 'label', __( 'Sidebar panel' ) );
-			select.setAttribute( 'compact', '' );
-			select.addEventListener( 'os-pick', ( event: Event ) => {
-				const value = ( event as CustomEvent< { value?: string } > ).detail
-					?.value;
-				if ( value && SIDEBAR_AREA_PATTERN.test( value ) ) {
-					chooseSidebarArea( source, value );
-				}
-			} );
-			slot.appendChild( select );
+		if ( ! toolbar ) {
+			toolbar = document.createElement( 'div' );
+			toolbar.classList.add( 'os-editor-sidecar-panel-buttons' );
+			toolbar.setAttribute( 'role', 'toolbar' );
+			toolbar.setAttribute( 'aria-label', __( 'Sidebar panels' ) );
+			slot.appendChild( toolbar );
 		}
 		let close = slot.querySelector< HTMLElement >(
 			'os-window-button.os-editor-sidecar-panel-close',
@@ -968,7 +1039,7 @@ export function bootEditorSidecar( {
 			} );
 			slot.appendChild( close );
 		}
-		syncCompanionPanelSelector( source.id );
+		syncCompanionPanelButtons( source.id );
 	}
 
 	const openChoiceMenu = (
@@ -1080,10 +1151,10 @@ export function bootEditorSidecar( {
 				'.os-window__slot--after-titlebar',
 			);
 			if ( source && slot ) {
-				mountCompanionPanelSelector( source, slot );
+				mountCompanionPanelButtons( source, slot );
 			}
 			activateCompanion( win, areaBySource.get( sourceId ) ?? null );
-			syncCompanionPanelSelector( sourceId );
+			syncCompanionPanelButtons( sourceId );
 			return;
 		}
 		const autoOpen = consumeAutoOpen( win );
@@ -1391,7 +1462,7 @@ export function bootEditorSidecar( {
 					}
 				}
 				areaBySource.set( sourceId, data.area );
-				syncCompanionPanelSelector( sourceId );
+				syncCompanionPanelButtons( sourceId );
 			}
 			if ( ! data.active || data.available === false ) {
 				requestCompanionClose( sourceId );
