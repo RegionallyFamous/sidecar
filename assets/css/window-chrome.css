@@ -113,6 +113,13 @@
 	box-shadow: var( --os-window-shadow-focused );
 }
 
+/* Focus belongs to the compound editor, not whichever underlying iframe
+ * received the last pointer event. Neutralize the user's unfocused-window
+ * treatment on both members while either one is active. */
+.os-window.os-window--editor-sidecar-pair-focused {
+	filter: none !important;
+}
+
 .os-window--editor-sidecar-source > .os-window__titlebar {
 	border-start-start-radius: max(
 		0px,
