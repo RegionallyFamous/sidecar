@@ -280,20 +280,36 @@ function consumeAutoOpen( source: EditorSidecarWindowLike ): boolean {
 		return false;
 	}
 	try {
-		const current = source.getCurrentUrl?.() || source.config.url || '';
-		const url = new URL( current, window.location.origin );
-		if ( url.searchParams.get( AUTO_OPEN_QUERY_KEY ) !== '1' ) {
+		const live = source.getCurrentUrl?.() || '';
+		const configured = source.config.url || '';
+		const flagged = [ configured, live ]
+			.filter( Boolean )
+			.map( ( candidate ) => new URL( candidate, window.location.origin ) )
+			.find(
+				( candidate ) =>
+					candidate.searchParams.get( AUTO_OPEN_QUERY_KEY ) === '1',
+			);
+		if ( ! flagged ) {
 			return false;
 		}
-		url.searchParams.delete( AUTO_OPEN_QUERY_KEY );
-		source.config.url = url.toString();
+		const configuredUrl = new URL(
+			configured || live || flagged.toString(),
+			window.location.origin,
+		);
+		configuredUrl.searchParams.delete( AUTO_OPEN_QUERY_KEY );
+		source.config.url = configuredUrl.toString();
 		const frame = frameWindow( source );
 		if ( frame?.history ) {
 			try {
+				const liveUrl = new URL(
+					live || flagged.toString(),
+					window.location.origin,
+				);
+				liveUrl.searchParams.delete( AUTO_OPEN_QUERY_KEY );
 				frame.history.replaceState(
 					frame.history.state,
 					'',
-					`${ url.pathname }${ url.search }${ url.hash }`,
+					`${ liveUrl.pathname }${ liveUrl.search }${ liveUrl.hash }`,
 				);
 			} catch {
 				/* Navigation may have crossed a same-origin document boundary. */
