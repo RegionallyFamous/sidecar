@@ -18,6 +18,12 @@
       "password": "password"
     },
     {
+      "step": "defineWpConfigConsts",
+      "consts": {
+        "JETPACK_DEV_DEBUG": true
+      }
+    },
+    {
       "step": "installPlugin",
       "pluginData": {
         "resource": "url",
