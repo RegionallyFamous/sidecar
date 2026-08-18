@@ -249,10 +249,15 @@ function humanizeSidebarArea( area: string ): string {
 }
 
 function sidebarAreaForControl( control: Element ): string | null {
-	const area = ( control.getAttribute( 'aria-controls' ) ?? '' ).replace(
-		':',
-		'/',
-	);
+	const controlled = control.getAttribute( 'aria-controls' ) ?? '';
+	// Complementary-area toggles use `plugin:panel`. Gutenberg's internal
+	// settings tabs use slash-bearing ids such as
+	// `tabs-0-edit-post/document-view`; accepting those would paint duplicate
+	// Page/Block arrows in the Sidecar toolbar.
+	if ( ! controlled.includes( ':' ) ) {
+		return null;
+	}
+	const area = controlled.replace( ':', '/' );
 	return SIDEBAR_AREA_PATTERN.test( area ) ? area : null;
 }
 

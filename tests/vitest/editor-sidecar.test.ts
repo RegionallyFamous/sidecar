@@ -461,6 +461,13 @@ describe( 'bootEditorSidecar', () => {
 		);
 		jetpack.appendChild( jetpackIcon );
 		pinned.appendChild( jetpack );
+		const pageTab = frame.document.createElement( 'button' );
+		pageTab.setAttribute(
+			'aria-controls',
+			'tabs-0-edit-post/document-view',
+		);
+		pageTab.setAttribute( 'aria-label', 'Page' );
+		pinned.appendChild( pageTab );
 		frame.document.body.appendChild( pinned );
 		const editor = fakeWindow( 'post-companion-chooser', frame );
 		manager.add( editor );
@@ -521,6 +528,11 @@ describe( 'bootEditorSidecar', () => {
 				'[data-sidebar-area="jetpack-sidebar/jetpack"] [data-jetpack-icon]',
 			),
 		).not.toBeNull();
+		expect(
+			toolbar!.querySelector(
+				'[data-sidebar-area="tabs-0-edit-post/document-view"]',
+			),
+		).toBeNull();
 
 		// Window-slot registry updates repaint every slot. The companion's
 		// inline appearance renderer must restore the persistent icon row.
