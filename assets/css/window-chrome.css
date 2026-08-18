@@ -73,19 +73,64 @@
 }
 
 /*
- * Gutenberg Sidebar Window is a real sibling window, but the pair should
- * read as one connected editing surface. The source keeps its floating
- * geometry; the narrow companion is positioned flush at its inline end.
+ * Gutenberg Sidebar Window is a real sibling iframe, but visually it behaves
+ * like an inspector extension. The source keeps its normal OpenStation
+ * window; the companion replaces its own chrome with a continuation of the
+ * source title bar, then contributes a flat panel separated by Gutenberg's
+ * quiet sidebar divider.
  */
-.os-window--editor-sidecar-source {
-	border-start-end-radius: 0;
+.os-window.os-window--editor-sidecar-source {
+	isolation: isolate;
+	overflow: visible;
+	border-inline-end-color: transparent;
 	border-end-end-radius: 0;
 }
 
-.os-window--editor-sidecar-companion {
-	border-start-start-radius: 0;
-	border-end-start-radius: 0;
+.os-window--editor-sidecar-source > .os-window__titlebar {
+	border-start-end-radius: 0;
+}
+
+.os-window--editor-sidecar-source > .os-window__body {
+	border-end-end-radius: 0;
+}
+
+/* Focus belongs to the complete editor surface, even when the inspector's
+ * iframe received the last pointer event. */
+.os-window.os-window--editor-sidecar-pair-focused {
+	filter: none !important;
+}
+
+.os-window.os-window--editor-sidecar-source.os-window--editor-sidecar-pair-focused {
+	box-shadow: var( --os-window-shadow-focused );
+}
+
+.os-window.os-window--editor-sidecar-companion {
 	min-width: 280px;
+	background: #fff;
+	background-clip: padding-box;
+	border: 0;
+	border-block-start: 1px solid var( --os-window-border );
+	border-block-end: 1px solid var( --os-window-border );
+	border-inline-end: 1px solid var( --os-window-border );
+	border-start-start-radius: 0;
+	border-start-end-radius: var( --os-window-radius );
+	border-end-start-radius: 0;
+	border-end-end-radius: var( --os-window-radius );
+	box-shadow: none;
+	color: #1d2327;
+	--os-ui-surface: #fff;
+}
+
+/* The editor owns the only title bar. */
+.os-window--editor-sidecar-companion > .os-window__titlebar {
+	display: none;
+}
+
+.os-window--editor-sidecar-companion > .os-window__body {
+	border-end-end-radius: max(
+		0px,
+		calc( var( --os-window-radius ) - 1px )
+	);
 }
 
 /* Its width and height follow Gutenberg/the source, not free resizing. */
@@ -212,6 +257,16 @@
 	 * TITLEBAR image before reaching `none`, so a theme that ships
 	 * only one title-bar texture gets it on both states for free.
 	 */
+	background-image: var(
+		--os-titlebar-image-focused,
+		var(--os-titlebar-image, none)
+	);
+	color: var(--os-titlebar-color-focused);
+}
+
+.os-window--editor-sidecar-source.os-window--editor-sidecar-pair-focused
+	> .os-window__titlebar {
+	background-color: var(--os-titlebar-bg-focused);
 	background-image: var(
 		--os-titlebar-image-focused,
 		var(--os-titlebar-image, none)
@@ -367,25 +422,102 @@
 }
 
 /*
- * Sidebar Window keeps its panel picker in a dedicated row beneath the
- * draggable title bar. It is intentionally a labelled native select rather
- * than another icon-only chrome button: the current panel and the switching
- * affordance remain visible after the companion has opened.
+ * This row is the inline continuation of the source title bar. It mirrors
+ * Gutenberg's compact sidebar-toggle cluster instead of introducing a form
+ * field inside the window chrome.
  */
 .os-window--editor-sidecar-companion
 	.os-window__slot--after-titlebar {
 	display: flex;
-	align-items: stretch;
-	padding: 7px 8px 8px;
-	border-bottom: 1px solid var( --os-ui-border, #dcdcde );
-	background: var( --os-ui-surface, #fff );
+	align-items: center;
+	gap: 6px;
+	box-sizing: border-box;
+	height: 40px;
+	padding: 4px 5px 4px 8px;
+	border-bottom: 0;
+	border-start-end-radius: max(
+		0px,
+		calc( var( --os-window-radius ) - 1px )
+	);
+	background-color: var( --os-titlebar-bg );
+	background-image: var( --os-titlebar-image, none );
+	background-repeat: var( --os-titlebar-image-repeat, repeat );
+	background-size: var( --os-titlebar-image-size, auto );
+	background-position: var( --os-titlebar-image-position, center );
+	color: var( --os-titlebar-color );
+	--os-ui-fg: var( --os-titlebar-color );
+	--os-ui-fg-muted: var( --os-titlebar-color );
+	--os-ui-hover: rgba( 255, 255, 255, 0.11 );
+	--os-ui-active: rgba( 255, 255, 255, 0.17 );
+}
+
+.os-window--editor-sidecar-companion.os-window--editor-sidecar-pair-focused
+	.os-window__slot--after-titlebar {
+	background-color: var( --os-titlebar-bg-focused );
+	background-image: var(
+		--os-titlebar-image-focused,
+		var( --os-titlebar-image, none )
+	);
+	color: var( --os-titlebar-color-focused );
+	--os-ui-fg: var( --os-titlebar-color-focused );
+	--os-ui-fg-muted: var( --os-titlebar-color-focused );
 }
 
 .os-window--editor-sidecar-companion
-	.os-editor-sidecar-panel-select {
+	.os-editor-sidecar-panel-buttons {
+	display: flex;
+	align-items: center;
+	gap: 2px;
 	flex: 1;
 	min-width: 0;
-	width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-inline: contain;
+	scrollbar-width: none;
+}
+
+.os-window--editor-sidecar-companion
+	.os-editor-sidecar-panel-buttons::-webkit-scrollbar {
+	display: none;
+}
+
+.os-window--editor-sidecar-companion
+	.os-editor-sidecar-panel-button {
+	flex: 0 0 auto;
+	--os-ui-btn-color: var( --os-titlebar-color );
+	--os-ui-btn-color-hover: var( --os-titlebar-color );
+	--os-ui-btn-bg-hover: rgba( 255, 255, 255, 0.11 );
+	--os-ui-btn-bg-active: rgba( 255, 255, 255, 0.2 );
+	--os-ui-btn-outline: var( --os-ui-focus, #72aee6 );
+}
+
+.os-window--editor-sidecar-companion.os-window--editor-sidecar-pair-focused
+	.os-editor-sidecar-panel-button {
+	--os-ui-btn-color: var( --os-titlebar-color-focused );
+	--os-ui-btn-color-hover: var( --os-titlebar-color-focused );
+}
+
+.os-window--editor-sidecar-companion
+	.os-editor-sidecar-panel-icon {
+	display: block;
+	box-sizing: border-box;
+	width: 20px !important;
+	height: 20px !important;
+	margin: 0;
+	font-size: 20px;
+	line-height: 1;
+	object-fit: contain;
+	pointer-events: none;
+}
+
+.os-window--editor-sidecar-companion
+	.os-editor-sidecar-panel-close {
+	flex: 0 0 auto;
+	--os-ui-btn-color: var( --os-ui-fg-muted, #646970 );
+	--os-ui-btn-color-hover: var( --os-ui-fg, #1d2327 );
+	--os-ui-btn-bg-hover: var( --os-ui-hover, rgba( 0, 0, 0, 0.08 ) );
+	--os-ui-btn-bg-active: var( --os-ui-active, rgba( 0, 0, 0, 0.12 ) );
+	--os-ui-btn-outline: var( --os-ui-focus, #2271b1 );
 }
 
 /* ---------------------------------------------------------------
@@ -435,7 +567,17 @@
 	--os-ui-btn-danger-hover: var( --os-ui-danger, #d63638 );
 }
 
-.os-window:not( .os-window--focused ) {
+.os-window.os-window--editor-sidecar-source.os-window--editor-sidecar-pair-focused {
+	--os-ui-btn-color: var( --os-titlebar-btn-focused-color, rgba( 255, 255, 255, 0.7 ) );
+	--os-ui-btn-color-hover: var( --os-titlebar-btn-focused-color-hover, #fff );
+	--os-ui-btn-bg-hover: var( --os-titlebar-btn-focused-bg-hover, rgba( 255, 255, 255, 0.18 ) );
+	--os-ui-btn-bg-active: var( --os-titlebar-btn-focused-bg-active, rgba( 255, 255, 255, 0.25 ) );
+	--os-ui-btn-outline: var( --os-titlebar-btn-focused-outline, rgba( 255, 255, 255, 0.65 ) );
+}
+
+.os-window:not( .os-window--focused ):not(
+	.os-window--editor-sidecar-pair-focused
+) {
 	--os-ui-btn-color: var( --os-titlebar-btn-color, rgba( 0, 0, 0, 0.45 ) );
 	--os-ui-btn-color-hover: var( --os-titlebar-btn-color-hover, rgba( 0, 0, 0, 0.85 ) );
 	--os-ui-btn-bg-hover: var( --os-titlebar-btn-bg-hover, rgba( 0, 0, 0, 0.08 ) );
@@ -465,7 +607,9 @@
  * unthemed shell. No theme, no change.
  */
 .os-shell[ data-os-desktop-theme ]
-	.os-window:not( .os-window--focused ) {
+	.os-window:not( .os-window--focused ):not(
+		.os-window--editor-sidecar-pair-focused
+	) {
 	--os-ui-btn-color: var(
 		--os-titlebar-btn-color,
 		color-mix( in srgb, var( --os-titlebar-color, #50575e ) 72%, transparent )
@@ -520,7 +664,7 @@
 		var( --os-titlebar-divider, rgba(255, 255, 255, 0.15) );
 }
 
-.os-window:not(.os-window--focused) .os-window__titlebar:has(.os-window__menu-btn) .os-window__controls {
+.os-window:not(.os-window--focused):not(.os-window--editor-sidecar-pair-focused) .os-window__titlebar:has(.os-window__menu-btn) .os-window__controls {
 	border-inline-start-color: var(
 		--os-titlebar-divider-unfocused,
 		rgba(0, 0, 0, 0.1)
@@ -647,8 +791,26 @@
 	background: var( --os-titlebar-btn-focused-bg-active, rgba(255, 255, 255, 0.25) );
 }
 
+.os-window--editor-sidecar-pair-focused .os-window__meta-btn {
+	color: var( --os-titlebar-btn-focused-color, rgba(255, 255, 255, 0.65) );
+}
+.os-window--editor-sidecar-pair-focused .os-window__meta-btn:hover {
+	color: var( --os-titlebar-btn-focused-color-hover, var( --os-ui-fg-on-accent, #fff ) );
+	background: var( --os-titlebar-btn-focused-bg-hover, rgba(255, 255, 255, 0.18) );
+}
+.os-window--editor-sidecar-pair-focused .os-window__meta-btn:focus-visible {
+	color: var( --os-titlebar-btn-focused-color-hover, var( --os-ui-fg-on-accent, #fff ) );
+	background: var( --os-titlebar-btn-focused-bg-hover, rgba(255, 255, 255, 0.18) );
+	outline: 2px solid var( --os-titlebar-btn-focused-outline, rgba(255, 255, 255, 0.6) );
+	outline-offset: 1px;
+}
+.os-window--editor-sidecar-pair-focused .os-window__meta-btn--active {
+	color: var( --os-titlebar-btn-focused-color-hover, var( --os-ui-fg-on-accent, #fff ) );
+	background: var( --os-titlebar-btn-focused-bg-active, rgba(255, 255, 255, 0.25) );
+}
+
 /* Unfocused window: divider and buttons adapt to light title bar. */
-.os-window:not(.os-window--focused) .os-window__screen-meta {
+.os-window:not(.os-window--focused):not(.os-window--editor-sidecar-pair-focused) .os-window__screen-meta {
 	border-inline-end-color: var(
 		--os-titlebar-divider-unfocused,
 		rgba(0, 0, 0, 0.1)
@@ -661,14 +823,14 @@
  * buttons sit in the same strip as controls that were already themable.
  * The literals are unchanged, so an unthemed bar looks as it always did.
  */
-.os-window:not(.os-window--focused) .os-window__meta-btn {
+.os-window:not(.os-window--focused):not(.os-window--editor-sidecar-pair-focused) .os-window__meta-btn {
 	color: var( --os-titlebar-btn-color, rgba(0, 0, 0, 0.3) );
 }
-.os-window:not(.os-window--focused) .os-window__meta-btn:hover {
+.os-window:not(.os-window--focused):not(.os-window--editor-sidecar-pair-focused) .os-window__meta-btn:hover {
 	color: var( --os-titlebar-btn-color-hover, rgba(0, 0, 0, 0.6) );
 	background: var( --os-ui-hover, rgba(0, 0, 0, 0.08) );
 }
-.os-window:not(.os-window--focused) .os-window__meta-btn--active {
+.os-window:not(.os-window--focused):not(.os-window--editor-sidecar-pair-focused) .os-window__meta-btn--active {
 	color: var( --os-titlebar-btn-color-hover, rgba(0, 0, 0, 0.6) );
 	background: rgba(0, 0, 0, 0.12);
 }
