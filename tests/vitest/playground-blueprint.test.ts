@@ -1,7 +1,7 @@
 /**
  * The public Playground Blueprint installs OpenStation and creates its
- * Gutenberg Sidebar Window demo with one intentional, self-contained runPHP
- * step. It must not stage an extension or a must-use plugin.
+ * Gutenberg Sidebar Window demo with explicit Jetpack and content setup steps.
+ * It must not stage an extension or a must-use plugin.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -71,6 +71,7 @@ describe( 'public Playground Blueprint', () => {
 			'installPlugin',
 			'installPlugin',
 			'runPHP',
+			'runPHP',
 		] );
 
 		expect( BLUEPRINT.steps[ 1 ].consts ).toEqual( {
@@ -90,10 +91,19 @@ describe( 'public Playground Blueprint', () => {
 			slug: 'jetpack',
 		} );
 		expect( jetpack.options ).toEqual( { activate: true } );
+
+		const jetpackSetup = BLUEPRINT.steps[ 4 ];
+		expect( jetpackSetup.step ).toBe( 'runPHP' );
+		const jetpackPhp = jetpackSetup.code ?? '';
+		expect( jetpackPhp ).toContain( "class_exists('Jetpack')" );
+		expect( jetpackPhp ).toContain( "Jetpack::is_module_active('blocks')" );
+		expect( jetpackPhp ).toContain(
+			"Jetpack::activate_module('blocks', false, false)",
+		);
 	} );
 
 	test( 'does not stage extensions or must-use plugins', () => {
-		expect( BLUEPRINT.steps ).toHaveLength( 5 );
+		expect( BLUEPRINT.steps ).toHaveLength( 6 );
 		expect(
 			BLUEPRINT.steps.some(
 				( step ) =>
@@ -102,14 +112,16 @@ describe( 'public Playground Blueprint', () => {
 			),
 		).toBe( false );
 
-		const php = BLUEPRINT.steps[ 4 ].code ?? '';
+		const php = BLUEPRINT.steps
+			.map( ( step ) => step.code ?? '' )
+			.join( '\n' );
 		expect( php ).not.toContain( '/mu-plugins/' );
 		expect( php ).not.toContain( 'openstation_register_extension' );
 		expect( php ).not.toContain( 'file_put_contents' );
 	} );
 
 	test( 'creates the idempotent Sidebar Window demo and opens its editor', () => {
-		const setup = BLUEPRINT.steps[ 4 ];
+		const setup = BLUEPRINT.steps[ 5 ];
 		expect( setup.step ).toBe( 'runPHP' );
 		const php = setup.code ?? '';
 
