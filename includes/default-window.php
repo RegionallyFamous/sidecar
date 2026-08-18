@@ -169,10 +169,16 @@ function openstation_validate_default_window_url( $url ) {
 		return '';
 	}
 
-	// Reassemble as a clean same-origin URL so downstream consumers
-	// always get a fully-qualified string.
+	// Reassemble from the origin, not `home_url( $parsed['path'] )`.
+	// On subdirectory installs (including Playground's `/scope:.../`
+	// mounts), the parsed admin path already contains the site prefix;
+	// passing it back through home_url() would duplicate that prefix.
 	$query = isset( $parsed['query'] ) ? '?' . $parsed['query'] : '';
-	return esc_url_raw( home_url( $parsed['path'] . $query ), array( $home_scheme ? $home_scheme : 'https', 'http', 'https' ) );
+	$origin = ( $home_scheme ? $home_scheme : 'https' ) . '://' . $home_host;
+	if ( is_array( $home_origin ) && ! empty( $home_origin['port'] ) ) {
+		$origin .= ':' . (int) $home_origin['port'];
+	}
+	return esc_url_raw( $origin . $parsed['path'] . $query, array( $home_scheme ? $home_scheme : 'https', 'http', 'https' ) );
 }
 
 /**

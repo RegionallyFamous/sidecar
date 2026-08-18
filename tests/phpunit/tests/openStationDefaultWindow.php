@@ -148,6 +148,27 @@ class Tests_OpenStation_DefaultWindow extends WP_UnitTestCase {
 	}
 
 	/**
+	 * @covers ::openstation_validate_default_window_url
+	 */
+	public function test_validate_does_not_duplicate_subdirectory_prefix() {
+		$old_home    = get_option( 'home' );
+		$old_siteurl = get_option( 'siteurl' );
+
+		try {
+			update_option( 'home', untrailingslashit( $old_home ) . '/scope:test' );
+			update_option( 'siteurl', untrailingslashit( $old_siteurl ) . '/scope:test' );
+			$url   = admin_url( 'post.php?post=4&action=edit' );
+			$clean = openstation_validate_default_window_url( $url );
+
+			$this->assertSame( $url, $clean );
+			$this->assertSame( 1, substr_count( $clean, '/scope:test/' ) );
+		} finally {
+			update_option( 'home', $old_home );
+			update_option( 'siteurl', $old_siteurl );
+		}
+	}
+
+	/**
 	 * Portal-integration: when the preference is disabled, the
 	 * entry URL falls back to the stored URL (still a real admin
 	 * page — the shell respects `enabled=false` and skips
