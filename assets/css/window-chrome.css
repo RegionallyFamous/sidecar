@@ -508,9 +508,9 @@
 }
 
 /*
- * This row is the inline continuation of the source title bar. The native
- * selector stays accessible but its closed state becomes transparent title
- * text rather than a dark field inside another dark field.
+ * This row is the inline continuation of the source title bar. It mirrors
+ * Gutenberg's compact sidebar-toggle cluster instead of introducing a form
+ * field inside the window chrome.
  */
 .os-window--editor-sidecar-companion
 	.os-window__slot--after-titlebar {
@@ -550,10 +550,50 @@
 }
 
 .os-window--editor-sidecar-companion
-	.os-editor-sidecar-panel-select {
+	.os-editor-sidecar-panel-buttons {
+	display: flex;
+	align-items: center;
+	gap: 2px;
 	flex: 1;
 	min-width: 0;
-	width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-inline: contain;
+	scrollbar-width: none;
+}
+
+.os-window--editor-sidecar-companion
+	.os-editor-sidecar-panel-buttons::-webkit-scrollbar {
+	display: none;
+}
+
+.os-window--editor-sidecar-companion
+	.os-editor-sidecar-panel-button {
+	flex: 0 0 auto;
+	--os-ui-btn-color: var( --os-titlebar-color );
+	--os-ui-btn-color-hover: var( --os-titlebar-color );
+	--os-ui-btn-bg-hover: rgba( 255, 255, 255, 0.11 );
+	--os-ui-btn-bg-active: rgba( 255, 255, 255, 0.2 );
+	--os-ui-btn-outline: var( --os-ui-focus, #72aee6 );
+}
+
+.os-window--editor-sidecar-companion.os-window--editor-sidecar-pair-focused
+	.os-editor-sidecar-panel-button {
+	--os-ui-btn-color: var( --os-titlebar-color-focused );
+	--os-ui-btn-color-hover: var( --os-titlebar-color-focused );
+}
+
+.os-window--editor-sidecar-companion
+	.os-editor-sidecar-panel-icon {
+	display: block;
+	box-sizing: border-box;
+	width: 20px !important;
+	height: 20px !important;
+	margin: 0;
+	font-size: 20px;
+	line-height: 1;
+	object-fit: contain;
+	pointer-events: none;
 }
 
 .os-window--editor-sidecar-companion
