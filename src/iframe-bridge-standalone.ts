@@ -596,7 +596,7 @@ export function installEditorAutosaveHandler(): void {
  *  - `os-editor-sidecar-source` `{ parked: boolean }`
  *
  * Iframe → parent:
- *  - `os-editor-sidecar-state` `{ active, available, width }`
+ *  - `os-editor-sidecar-state` `{ active, available, width, area }`
  *
  * The outer shell supplies all visible window chrome. This handler never
  * adopts or clones Gutenberg DOM across documents.
@@ -748,8 +748,16 @@ export function installEditorSidecarHandler(): void {
 	let dragging = false;
 	let dragStartX = 0;
 	let dragStartWidth = 0;
+	let lastReportedArea: string | null = null;
 
 	const report = ( available = isAvailable() ): void => {
+		let area: string | null = null;
+		try {
+			area = getController()?.getActive() ?? null;
+		} catch {
+			/* Store disappeared during navigation. */
+		}
+		lastReportedArea = area;
 		try {
 			window.parent.postMessage(
 				{
@@ -757,6 +765,7 @@ export function installEditorSidecarHandler(): void {
 					active,
 					available,
 					width,
+					area,
 				},
 				origin,
 			);
@@ -978,6 +987,15 @@ export function installEditorSidecarHandler(): void {
 		}
 		if ( ! handle ) {
 			handle = createHandle();
+		}
+		let currentArea: string | null = null;
+		try {
+			currentArea = getController()?.getActive() ?? null;
+		} catch {
+			/* Store disappeared during navigation. */
+		}
+		if ( currentArea !== lastReportedArea ) {
+			report( true );
 		}
 		resizeObserver?.disconnect();
 		if ( typeof ResizeObserver === 'function' ) {

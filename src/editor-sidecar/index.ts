@@ -21,6 +21,7 @@ import { __ } from '../i18n';
 import { createSharedStore } from '../shared-store';
 import { registerTitleBarButton } from '../title-bar-buttons/registry';
 import '../ui/components/os-context-menu/os-context-menu';
+import '../ui/components/os-select/os-select';
 
 const ACTIVE_STORAGE_KEY = 'openstation.editorSidecar.activeWindows';
 const MAX_PERSISTED_IDS = 64;
@@ -38,6 +39,11 @@ const SIDEBAR_AREA_PATTERN = /^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_./-]*$/i;
 interface SidebarChoice {
 	area: string;
 	label: string;
+}
+
+interface SidebarPanelSelect extends HTMLElement {
+	items: ReadonlyArray< { value: string; label: string } >;
+	value: string;
 }
 
 type WindowState =
@@ -93,6 +99,12 @@ interface CompanionWindowConfig {
 	desktopId?: string;
 	appearance: {
 		controls: { hide: string[] };
+		slots: {
+			'after-titlebar': {
+				replace: true;
+				render: ( host: HTMLElement ) => void;
+			};
+		};
 	};
 	onClose: () => void;
 }
@@ -255,9 +267,8 @@ function sidebarChoices( win: EditorSidecarWindowLike ): SidebarChoice[] {
 	] );
 	try {
 		const frame = frameWindow( win );
-		const controls = frame?.document.querySelectorAll< HTMLElement >(
-			'.interface-pinned-items [aria-controls], [role="menuitemcheckbox"][aria-controls]',
-		);
+		const controls =
+			frame?.document.querySelectorAll< HTMLElement >( '[aria-controls]' );
 		for ( const control of controls ?? [] ) {
 			const controlled = control.getAttribute( 'aria-controls' ) ?? '';
 			const area = controlled.replace( ':', '/' );
@@ -476,6 +487,11 @@ export function bootEditorSidecar( {
 	const areaBySource = new Map< string, string | null >();
 	const companionWidths = new Map< string, number >();
 	const sourceGeometries = new Map< string, SourceGeometry >();
+	const sidebarChoicesBySource = new Map<
+		string,
+		Map< string, string >
+	>();
+	const sidebarChoiceObservers = new Map< string, MutationObserver >();
 	let choiceMenu: HTMLElement | null = null;
 	let choiceMenuHost: HTMLElement | null = null;
 	const closeChoiceMenu = (): void => {
@@ -517,6 +533,60 @@ export function bootEditorSidecar( {
 			} );
 		}
 	};
+
+	function availableSidebarChoices(
+		source: EditorSidecarWindowLike,
+	): SidebarChoice[] {
+		let remembered = sidebarChoicesBySource.get( source.id );
+		if ( ! remembered ) {
+			remembered = new Map();
+			sidebarChoicesBySource.set( source.id, remembered );
+		}
+		for ( const choice of sidebarChoices( source ) ) {
+			remembered.set( choice.area, choice.label );
+		}
+		return Array.from( remembered, ( [ area, label ] ) => ( { area, label } ) );
+	}
+
+	function startSidebarChoiceObserver(
+		source: EditorSidecarWindowLike,
+	): void {
+		sidebarChoiceObservers.get( source.id )?.disconnect();
+		sidebarChoiceObservers.delete( source.id );
+		const root = frameWindow( source )?.document.documentElement;
+		if ( ! root || typeof MutationObserver === 'undefined' ) {
+			return;
+		}
+		const observer = new MutationObserver( ( records ) => {
+			const addedControl = records.some( ( record ) => {
+				if ( record.type === 'attributes' ) {
+					return true;
+				}
+				return Array.from( record.addedNodes ).some(
+					( node ) => {
+						if ( node.nodeType !== 1 ) {
+							return false;
+						}
+						const element = node as Element;
+						return (
+							element.hasAttribute( 'aria-controls' ) ||
+							!! element.querySelector( '[aria-controls]' )
+						);
+					},
+				);
+			} );
+			if ( addedControl ) {
+				syncCompanionPanelSelector( source.id );
+			}
+		} );
+		observer.observe( root, {
+			attributes: true,
+			attributeFilter: [ 'aria-controls', 'aria-label', 'title' ],
+			childList: true,
+			subtree: true,
+		} );
+		sidebarChoiceObservers.set( source.id, observer );
+	}
 
 	const suspendSourceSnapping = ( source: EditorSidecarWindowLike ): void => {
 		if ( sourceSnapHandlers.has( source.id ) ) {
@@ -615,6 +685,9 @@ export function bootEditorSidecar( {
 		}
 		areaBySource.delete( sourceId );
 		companionWidths.delete( sourceId );
+		sidebarChoicesBySource.delete( sourceId );
+		sidebarChoiceObservers.get( sourceId )?.disconnect();
+		sidebarChoiceObservers.delete( sourceId );
 		pairObservers.get( sourceId )?.disconnect();
 		pairObservers.delete( sourceId );
 		const source = manager.getById( sourceId );
@@ -688,6 +761,7 @@ export function bootEditorSidecar( {
 			persistEditors();
 			parkSource( source, true );
 			suspendSourceSnapping( source );
+			startSidebarChoiceObserver( source );
 			source.element?.classList.add( 'os-window--editor-sidecar-source' );
 			source.renderCustomTitleBarButtons?.();
 			return;
@@ -699,6 +773,7 @@ export function bootEditorSidecar( {
 		persistEditors();
 		parkSource( source, true );
 		suspendSourceSnapping( source );
+		startSidebarChoiceObserver( source );
 		source.element?.classList.add( 'os-window--editor-sidecar-source' );
 		source.renderCustomTitleBarButtons?.();
 
@@ -738,6 +813,14 @@ export function bootEditorSidecar( {
 							'core/focus-tab',
 							'core/detach',
 						],
+					},
+					slots: {
+						'after-titlebar': {
+							replace: true,
+							render: ( host ) => {
+								mountCompanionPanelSelector( source, host );
+							},
+						},
 					},
 				},
 				onClose: () => {
@@ -797,6 +880,7 @@ export function bootEditorSidecar( {
 		area: string,
 	): void => {
 		areaBySource.set( source.id, area );
+		syncCompanionPanelSelector( source.id );
 		if ( ! store.state.activeEditors.has( source.id ) ) {
 			void openCompanion( source, area );
 			return;
@@ -810,6 +894,70 @@ export function bootEditorSidecar( {
 			void openCompanion( source, area );
 		}
 	};
+
+	function selectedSidebarArea( sourceId: string ): string {
+		const selected = areaBySource.get( sourceId );
+		if ( selected && SIDEBAR_AREA_PATTERN.test( selected ) ) {
+			return selected;
+		}
+		const companion = manager.getById( companionId( sourceId ) );
+		const liveArea = companion ? activeArea( companion ) : null;
+		return liveArea && SIDEBAR_AREA_PATTERN.test( liveArea )
+			? liveArea
+			: 'edit-post/document';
+	}
+
+	function syncCompanionPanelSelector( sourceId: string ): void {
+		const source = manager.getById( sourceId );
+		const companion = manager.getById( companionId( sourceId ) );
+		const select = companion?.element?.querySelector< SidebarPanelSelect >(
+			'os-select.os-editor-sidecar-panel-select',
+		);
+		if ( ! source || ! select ) {
+			return;
+		}
+		const items = availableSidebarChoices( source ).map( ( choice ) => ( {
+			value: choice.area,
+			label: choice.label,
+		} ) );
+		const currentItems = Array.from(
+			select.querySelectorAll< HTMLElement >( ':scope > os-option' ),
+		).map( ( option ) => ( {
+			value: option.getAttribute( 'value' ) ?? '',
+			label: option.textContent?.trim() ?? '',
+		} ) );
+		if ( JSON.stringify( currentItems ) !== JSON.stringify( items ) ) {
+			select.items = items;
+		}
+		const selected = selectedSidebarArea( sourceId );
+		if ( select.getAttribute( 'value' ) !== selected ) {
+			select.value = selected;
+			select.setAttribute( 'value', selected );
+		}
+	}
+
+	function mountCompanionPanelSelector(
+		source: EditorSidecarWindowLike,
+		slot: HTMLElement,
+	): void {
+		let select = slot.querySelector< SidebarPanelSelect >(
+			'os-select.os-editor-sidecar-panel-select',
+		);
+		if ( ! select ) {
+			select = document.createElement( 'os-select' ) as SidebarPanelSelect;
+			select.classList.add( 'os-editor-sidecar-panel-select' );
+			select.setAttribute( 'label', __( 'Sidebar panel' ) );
+			select.addEventListener( 'os-pick', ( event: Event ) => {
+				const value = ( event as CustomEvent< { value?: string } > ).detail
+					?.value;
+				if ( value && SIDEBAR_AREA_PATTERN.test( value ) ) {
+					chooseSidebarArea( source, value );
+				}
+			} );
+			slot.appendChild( select );
+		}
+		syncCompanionPanelSelector( source.id );
+	}
 
 	const openChoiceMenu = (
 		host: HTMLElement,
@@ -832,7 +980,7 @@ export function bootEditorSidecar( {
 
 		const selected =
 			areaBySource.get( source.id ) ?? activeArea( source ) ?? 'edit-post/document';
-		for ( const choice of sidebarChoices( source ) ) {
+		for ( const choice of availableSidebarChoices( source ) ) {
 			const option = document.createElement( 'os-context-menu-option' );
 			option.dataset.menuItemId = choice.area;
 			option.dataset.sidebarArea = choice.area;
@@ -915,7 +1063,15 @@ export function bootEditorSidecar( {
 				win.close?.();
 				return;
 			}
+			const source = manager.getById( sourceId );
+			const slot = win.element?.querySelector< HTMLElement >(
+				'.os-window__slot--after-titlebar',
+			);
+			if ( source && slot ) {
+				mountCompanionPanelSelector( source, slot );
+			}
 			activateCompanion( win, areaBySource.get( sourceId ) ?? null );
+			syncCompanionPanelSelector( sourceId );
 			return;
 		}
 		const autoOpen = consumeAutoOpen( win );
@@ -1158,7 +1314,12 @@ export function bootEditorSidecar( {
 			return;
 		}
 		const data = event.data as
-			| { type?: unknown; active?: unknown; available?: unknown }
+			| {
+					type?: unknown;
+					active?: unknown;
+					available?: unknown;
+					area?: unknown;
+			}
 			| null;
 		if (
 			! data ||
@@ -1171,6 +1332,22 @@ export function bootEditorSidecar( {
 			const companion = manager.getById( companionId( sourceId ) );
 			if ( companion?.iframe?.contentWindow !== event.source ) {
 				continue;
+			}
+			if (
+				data.active &&
+				typeof data.area === 'string' &&
+				SIDEBAR_AREA_PATTERN.test( data.area )
+			) {
+				const source = manager.getById( sourceId );
+				if ( source ) {
+					availableSidebarChoices( source );
+					const choices = sidebarChoicesBySource.get( sourceId );
+					if ( choices && ! choices.has( data.area ) ) {
+						choices.set( data.area, humanizeSidebarArea( data.area ) );
+					}
+				}
+				areaBySource.set( sourceId, data.area );
+				syncCompanionPanelSelector( sourceId );
 			}
 			if ( ! data.active || data.available === false ) {
 				requestCompanionClose( sourceId );
