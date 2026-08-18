@@ -73,6 +73,32 @@
 }
 
 /*
+ * Gutenberg Sidebar Window is a real sibling window, but the pair should
+ * read as one connected editing surface. The source keeps its floating
+ * geometry; the narrow companion is positioned flush at its inline end.
+ */
+.os-window--editor-sidecar-source {
+	border-start-end-radius: 0;
+	border-end-end-radius: 0;
+}
+
+.os-window--editor-sidecar-companion {
+	border-start-start-radius: 0;
+	border-end-start-radius: 0;
+	min-width: 280px;
+}
+
+/* Its width and height follow Gutenberg/the source, not free resizing. */
+.os-window--editor-sidecar-companion .os-window__resize-handle {
+	display: none;
+}
+
+.os-window--editor-sidecar-companion .os-window__menu-btn,
+.os-window--editor-sidecar-companion .os-window__menu-panel {
+	display: none;
+}
+
+/*
  * Suppress the left/top/width/height transition during drag or resize —
  * otherwise every pointer move lerps and the window lags the cursor.
  *
