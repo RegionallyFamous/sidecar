@@ -11,9 +11,9 @@
  * A separate editor document is the unavoidable boundary for a truly
  * independent shell window: an iframe cannot paint outside its own box,
  * and adopting plugin-owned React DOM into the shell would sever React
- * context and delegated events. The source's complementary area is
- * therefore parked while the companion is open, and the companion is
- * ephemeral so only the source participates in session restore.
+ * context and delegated events. Both complementary areas stay available;
+ * the companion is ephemeral so only the source participates in session
+ * restore.
  */
 
 import { addAction, HOOKS } from '../hooks';
@@ -309,13 +309,6 @@ function postMessageTo(
 	} catch {
 		return false;
 	}
-}
-
-function parkSource( win: EditorSidecarWindowLike, parked: boolean ): boolean {
-	return postMessageTo( win, {
-		type: 'os-editor-sidecar-source',
-		parked,
-	} );
 }
 
 function activateCompanion(
@@ -699,7 +692,6 @@ export function bootEditorSidecar( {
 			'os-window--reflowing',
 		);
 		if ( source ) {
-			parkSource( source, false );
 			const saved = sourceGeometries.get( sourceId );
 			if ( saved && source.element ) {
 				const desktop = source.element.parentElement;
@@ -741,8 +733,8 @@ export function bootEditorSidecar( {
 	const requestCompanionClose = ( sourceId: string ): void => {
 		const companion = manager.getById( companionId( sourceId ) );
 		if ( companion?.close ) {
-			// Keep the source parked and the toggle active until Window.close()
-			// clears its before-unload guard and invokes the companion onClose.
+			// Keep the toggle active until Window.close() clears its
+			// before-unload guard and invokes the companion onClose.
 			companion.close();
 			return;
 		}
@@ -762,7 +754,6 @@ export function bootEditorSidecar( {
 			areaBySource.set( source.id, selectedArea );
 			store.state.activeEditors.add( source.id );
 			persistEditors();
-			parkSource( source, true );
 			suspendSourceSnapping( source );
 			startSidebarChoiceObserver( source );
 			source.element?.classList.add( 'os-window--editor-sidecar-source' );
@@ -774,7 +765,6 @@ export function bootEditorSidecar( {
 		areaBySource.set( source.id, area );
 		store.state.activeEditors.add( source.id );
 		persistEditors();
-		parkSource( source, true );
 		suspendSourceSnapping( source );
 		startSidebarChoiceObserver( source );
 		source.element?.classList.add( 'os-window--editor-sidecar-source' );
@@ -1374,21 +1364,6 @@ export function bootEditorSidecar( {
 			area?: unknown;
 		} | null;
 		if ( ! data ) {
-			return;
-		}
-		if (
-			data.type === 'os-editor-sidecar-source-area' &&
-			typeof data.area === 'string' &&
-			SIDEBAR_AREA_PATTERN.test( data.area )
-		) {
-			for ( const sourceId of store.state.activeEditors ) {
-				const source = manager.getById( sourceId );
-				if ( source?.iframe?.contentWindow !== event.source ) {
-					continue;
-				}
-				chooseSidebarArea( source, data.area );
-				break;
-			}
 			return;
 		}
 		if (
