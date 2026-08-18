@@ -505,7 +505,9 @@ describe( 'bootEditorSidecar', () => {
 			'/wp-admin/post.php?post=77&action=edit&openstation_sidebar_window_auto=1#editor',
 			window.location.origin,
 		).toString();
-		frame.location = { href: sourceUrl };
+		const liveUrl = new URL( sourceUrl );
+		liveUrl.searchParams.delete( 'openstation_sidebar_window_auto' );
+		frame.location = { href: liveUrl.toString() };
 		frame.history = {
 			state: { editor: true },
 			replaceState: vi.fn( ( _state, _title, nextUrl ) => {
