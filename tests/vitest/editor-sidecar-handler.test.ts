@@ -228,6 +228,28 @@ describe( 'installEditorSidecarHandler', () => {
 		} );
 	} );
 
+	test( 'switches an active companion to another plugin sidebar', async () => {
+		const gutenberg = installGutenberg( 'edit-post/document' );
+		addEditorDom();
+		sendSet( true, { detached: true, area: 'edit-post/document' } );
+		await handle();
+
+		sendSet( true, {
+			detached: true,
+			area: 'jetpack-sidebar/jetpack',
+		} );
+
+		expect( gutenberg.enable ).toHaveBeenLastCalledWith(
+			'core',
+			'jetpack-sidebar/jetpack',
+		);
+		expect( gutenberg.activeArea ).toBe( 'jetpack-sidebar/jetpack' );
+		expect( lastState() ).toMatchObject( {
+			active: true,
+			available: true,
+		} );
+	} );
+
 	test( 'explicit deactivation closes an already-active plugin sidebar', () => {
 		const gutenberg = installGutenberg( 'yoast-seo/sidebar' );
 		addEditorDom();

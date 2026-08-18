@@ -20,6 +20,7 @@ import { addAction, HOOKS } from '../hooks';
 import { __ } from '../i18n';
 import { createSharedStore } from '../shared-store';
 import { registerTitleBarButton } from '../title-bar-buttons/registry';
+import '../ui/components/os-context-menu/os-context-menu';
 
 const ACTIVE_STORAGE_KEY = 'openstation.editorSidecar.activeWindows';
 const MAX_PERSISTED_IDS = 64;
@@ -32,6 +33,12 @@ const COMPANION_WIDTH_STORAGE_KEY = 'openstation.editorSidecar.width';
 const DEFAULT_COMPANION_WIDTH = 320;
 const MIN_COMPANION_WIDTH = 280;
 const MAX_COMPANION_WIDTH = 520;
+const SIDEBAR_AREA_PATTERN = /^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_./-]*$/i;
+
+interface SidebarChoice {
+	area: string;
+	label: string;
+}
 
 type WindowState =
 	| 'normal'
@@ -227,6 +234,55 @@ function activeArea( win: EditorSidecarWindowLike ): string | null {
 	return null;
 }
 
+function humanizeSidebarArea( area: string ): string {
+	const name = area.split( '/' ).pop() || area;
+	return name
+		.replace( /[-_.]+/g, ' ' )
+		.replace( /\b\w/g, ( character ) => character.toUpperCase() );
+}
+
+/**
+ * Gutenberg does not expose a public selector that enumerates registered
+ * complementary areas. Its own area toggles do expose the identifier through
+ * `aria-controls`, so read those controls and keep the store selector for the
+ * currently active area. This supports arbitrary PluginSidebar registrations
+ * without teaching OpenStation plugin-specific identifiers.
+ */
+function sidebarChoices( win: EditorSidecarWindowLike ): SidebarChoice[] {
+	const choices = new Map< string, string >( [
+		[ 'edit-post/document', __( 'Post settings' ) ],
+		[ 'edit-post/block', __( 'Block settings' ) ],
+	] );
+	try {
+		const frame = frameWindow( win );
+		const controls = frame?.document.querySelectorAll< HTMLElement >(
+			'.interface-pinned-items [aria-controls], [role="menuitemcheckbox"][aria-controls]',
+		);
+		for ( const control of controls ?? [] ) {
+			const controlled = control.getAttribute( 'aria-controls' ) ?? '';
+			const area = controlled.replace( ':', '/' );
+			if ( ! SIDEBAR_AREA_PATTERN.test( area ) ) {
+				continue;
+			}
+			const label =
+				control.getAttribute( 'aria-label' )?.trim() ||
+				control.getAttribute( 'title' )?.trim() ||
+				control.textContent?.trim() ||
+				humanizeSidebarArea( area );
+			if ( ! choices.has( area ) ) {
+				choices.set( area, label );
+			}
+		}
+	} catch {
+		/* The editor may be between same-origin navigations. */
+	}
+	const current = activeArea( win );
+	if ( current && SIDEBAR_AREA_PATTERN.test( current ) && ! choices.has( current ) ) {
+		choices.set( current, humanizeSidebarArea( current ) );
+	}
+	return Array.from( choices, ( [ area, label ] ) => ( { area, label } ) );
+}
+
 function postMessageTo(
 	win: EditorSidecarWindowLike,
 	data: Record< string, unknown >,
@@ -420,6 +476,33 @@ export function bootEditorSidecar( {
 	const areaBySource = new Map< string, string | null >();
 	const companionWidths = new Map< string, number >();
 	const sourceGeometries = new Map< string, SourceGeometry >();
+	let choiceMenu: HTMLElement | null = null;
+	let choiceMenuHost: HTMLElement | null = null;
+	const closeChoiceMenu = (): void => {
+		choiceMenu?.remove();
+		choiceMenu = null;
+		choiceMenuHost?.setAttribute( 'aria-expanded', 'false' );
+		choiceMenuHost = null;
+		document.removeEventListener( 'mousedown', onChoiceMenuPointerDown, true );
+		document.removeEventListener( 'keydown', onChoiceMenuKeyDown, true );
+	};
+	const onChoiceMenuPointerDown = ( event: MouseEvent ): void => {
+		if (
+			choiceMenu &&
+			event.target instanceof Node &&
+			! choiceMenu.contains( event.target ) &&
+			! choiceMenuHost?.contains( event.target )
+		) {
+			closeChoiceMenu();
+		}
+	};
+	const onChoiceMenuKeyDown = ( event: KeyboardEvent ): void => {
+		if ( event.key === 'Escape' ) {
+			const returnFocus = choiceMenuHost;
+			closeChoiceMenu();
+			returnFocus?.focus();
+		}
+	};
 	const sourceSnapHandlers = new Map<
 		string,
 		{ onDragMove: unknown; onDragEnd: unknown }
@@ -594,10 +677,13 @@ export function bootEditorSidecar( {
 
 	const openCompanion = async (
 		source: EditorSidecarWindowLike,
+		preferredArea?: string | null,
 	): Promise< void > => {
+		const selectedArea =
+			preferredArea === undefined ? activeArea( source ) : preferredArea;
 		if ( openingSources.has( source.id ) ) {
 			rememberSourceGeometry( source );
-			areaBySource.set( source.id, activeArea( source ) );
+			areaBySource.set( source.id, selectedArea );
 			store.state.activeEditors.add( source.id );
 			persistEditors();
 			parkSource( source, true );
@@ -607,7 +693,7 @@ export function bootEditorSidecar( {
 			return;
 		}
 		openingSources.add( source.id );
-		const area = activeArea( source );
+		const area = selectedArea;
 		areaBySource.set( source.id, area );
 		store.state.activeEditors.add( source.id );
 		persistEditors();
@@ -706,6 +792,122 @@ export function bootEditorSidecar( {
 		}
 	};
 
+	const chooseSidebarArea = (
+		source: EditorSidecarWindowLike,
+		area: string,
+	): void => {
+		areaBySource.set( source.id, area );
+		if ( ! store.state.activeEditors.has( source.id ) ) {
+			void openCompanion( source, area );
+			return;
+		}
+		const companion = manager.getById( companionId( source.id ) );
+		if ( companion ) {
+			activateCompanion( companion, area );
+		} else {
+			// manager.open() may still be resolving. Its ready path reads the
+			// latest value from areaBySource, so no second window is needed.
+			void openCompanion( source, area );
+		}
+	};
+
+	const openChoiceMenu = (
+		host: HTMLElement,
+		source: EditorSidecarWindowLike,
+	): void => {
+		if ( choiceMenu && choiceMenuHost === host ) {
+			closeChoiceMenu();
+			return;
+		}
+		closeChoiceMenu();
+		const menu = document.createElement( 'os-context-menu' );
+		menu.setAttribute( 'open', '' );
+		menu.setAttribute( 'aria-label', __( 'Choose a sidebar' ) );
+		menu.classList.add( 'os-editor-sidecar-choice-menu' );
+		menu.style.position = 'fixed';
+		menu.style.left = '-9999px';
+		menu.style.top = '-9999px';
+		menu.style.visibility = 'hidden';
+		menu.style.zIndex = '1000000';
+
+		const selected =
+			areaBySource.get( source.id ) ?? activeArea( source ) ?? 'edit-post/document';
+		for ( const choice of sidebarChoices( source ) ) {
+			const option = document.createElement( 'os-context-menu-option' );
+			option.dataset.menuItemId = choice.area;
+			option.dataset.sidebarArea = choice.area;
+			option.setAttribute( 'value', choice.area );
+			option.setAttribute(
+				'icon',
+				choice.area.startsWith( 'edit-post/' )
+					? 'dashicons-admin-generic'
+					: 'dashicons-admin-plugins',
+			);
+			if ( choice.area === selected ) {
+				option.setAttribute( 'checked', '' );
+			}
+			option.textContent = choice.label;
+			menu.appendChild( option );
+		}
+
+		if ( store.state.activeEditors.has( source.id ) ) {
+			const separator = document.createElement( 'hr' );
+			separator.style.cssText =
+				'border:0;border-top:1px solid var(--os-ui-context-menu-separator-color,rgba(255,255,255,.12));margin:4px 6px';
+			menu.appendChild( separator );
+			const close = document.createElement( 'os-context-menu-option' );
+			close.dataset.menuItemId = 'close';
+			close.setAttribute( 'value', 'close' );
+			close.setAttribute( 'danger', '' );
+			close.setAttribute( 'icon', 'dashicons-no-alt' );
+			close.textContent = __( 'Close Sidebar Window' );
+			menu.appendChild( close );
+		}
+
+		menu.addEventListener( 'os-context-menu-pick', ( event: Event ) => {
+			const detail = (
+				event as CustomEvent< { id?: string; value?: string } >
+			).detail;
+			const value = detail?.id || detail?.value || '';
+			closeChoiceMenu();
+			if ( value === 'close' ) {
+				requestCompanionClose( source.id );
+			} else if ( SIDEBAR_AREA_PATTERN.test( value ) ) {
+				chooseSidebarArea( source, value );
+			}
+		} );
+
+		document.body.appendChild( menu );
+		choiceMenu = menu;
+		choiceMenuHost = host;
+		host.setAttribute( 'aria-expanded', 'true' );
+		document.addEventListener( 'mousedown', onChoiceMenuPointerDown, true );
+		document.addEventListener( 'keydown', onChoiceMenuKeyDown, true );
+		window.requestAnimationFrame( () => {
+			if ( choiceMenu !== menu ) {
+				return;
+			}
+			const anchor = host.getBoundingClientRect();
+			const rect = menu.getBoundingClientRect();
+			const margin = 8;
+			const left = Math.max(
+				margin,
+				Math.min(
+					anchor.right - rect.width,
+					window.innerWidth - rect.width - margin,
+				),
+			);
+			const below = anchor.bottom + 6;
+			const top =
+				below + rect.height <= window.innerHeight - margin
+					? below
+					: Math.max( margin, anchor.top - rect.height - 6 );
+			menu.style.left = `${ Math.round( left ) }px`;
+			menu.style.top = `${ Math.round( top ) }px`;
+			menu.style.visibility = 'visible';
+		} );
+	};
+
 	const handleReadyWindow = ( win: EditorSidecarWindowLike ): void => {
 		const sourceId = sourceIdFromCompanion( win.id );
 		if ( sourceId ) {
@@ -765,13 +967,11 @@ export function bootEditorSidecar( {
 		render: ( host, win ) => {
 			const active = store.state.activeEditors.has( win.id );
 			host.setAttribute( 'aria-pressed', String( active ) );
+			host.setAttribute( 'aria-haspopup', 'menu' );
+			host.setAttribute( 'aria-expanded', 'false' );
 			host.addEventListener( 'click', ( event: Event ) => {
 				event.stopPropagation();
-				if ( store.state.activeEditors.has( win.id ) ) {
-					requestCompanionClose( win.id );
-				} else {
-					void openCompanion( win );
-				}
+				openChoiceMenu( host, win );
 			} );
 		},
 	} );

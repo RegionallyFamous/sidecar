@@ -261,9 +261,7 @@ async function clickButton(
 ): Promise< HTMLElement > {
 	const host = renderButton( def, win );
 	host.click();
-	for ( let i = 0; i < 8; i++ ) {
-		await Promise.resolve();
-	}
+	await pickSidebarOption();
 	return host;
 }
 
@@ -271,6 +269,32 @@ async function flushMicrotasks(): Promise< void > {
 	for ( let i = 0; i < 8; i++ ) {
 		await Promise.resolve();
 	}
+}
+
+async function pickSidebarOption( value?: string ): Promise< void > {
+	await flushMicrotasks();
+	const menu = document.querySelector< HTMLElement >(
+		'os-context-menu.os-editor-sidecar-choice-menu',
+	);
+	if ( ! menu ) {
+		throw new Error( 'sidebar choice menu was not mounted' );
+	}
+	const options = Array.from(
+		menu.querySelectorAll< HTMLElement >( 'os-context-menu-option' ),
+	);
+	const option = value
+		? options.find(
+				( candidate ) =>
+					candidate.dataset.sidebarArea === value ||
+					candidate.dataset.menuItemId === value,
+			  )
+		: options.find( ( candidate ) => candidate.hasAttribute( 'checked' ) ) ??
+			options[ 0 ];
+	if ( ! option ) {
+		throw new Error( `sidebar choice ${ value ?? 'default' } was not found` );
+	}
+	option.click();
+	await flushMicrotasks();
 }
 
 function stateMessage(
@@ -344,6 +368,70 @@ describe( 'bootEditorSidecar', () => {
 		companionByUrl.getCurrentUrl = () =>
 			'/wp-admin/post.php?post=7&action=edit&openstation_sidebar_window=1';
 		expect( def.match( companionByUrl as never ) ).toBe( false );
+	} );
+
+	test( 'discovers plugin sidebars and switches the existing companion', async () => {
+		const { manager, def } = await boot();
+		const frame = gutenbergFrame();
+		const pinned = frame.document.createElement( 'div' );
+		pinned.className = 'interface-pinned-items';
+		const jetpack = frame.document.createElement( 'button' );
+		jetpack.setAttribute( 'aria-controls', 'jetpack-sidebar:jetpack' );
+		jetpack.setAttribute( 'aria-label', 'Jetpack' );
+		pinned.appendChild( jetpack );
+		frame.document.body.appendChild( pinned );
+		const editor = fakeWindow( 'post-jetpack', frame );
+		manager.add( editor );
+		const host = renderButton( def, editor );
+
+		host.click();
+		await flushMicrotasks();
+		const choices = Array.from(
+			document.querySelectorAll< HTMLElement >(
+				'.os-editor-sidecar-choice-menu os-context-menu-option',
+			),
+		);
+		expect(
+			choices.map( ( option ) => [
+				option.dataset.sidebarArea,
+				option.textContent,
+			] ),
+		).toEqual(
+			expect.arrayContaining( [
+				[ 'edit-post/document', 'Post settings' ],
+				[ 'edit-post/block', 'Block settings' ],
+				[ 'jetpack-sidebar/jetpack', 'Jetpack' ],
+			] ),
+		);
+
+		await pickSidebarOption( 'jetpack-sidebar/jetpack' );
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
+		const companion = manager.getById( 'post-jetpack--sidebar-window' )!;
+		const companionFrame =
+			companion.iframe!.contentWindow as unknown as FrameWindow;
+		hooks.doAction( HOOKS.IFRAME_READY, { windowId: companion.id } );
+		expect( companionFrame.postMessage ).toHaveBeenLastCalledWith(
+			{
+				type: 'os-editor-sidecar-set',
+				active: true,
+				detached: true,
+				area: 'jetpack-sidebar/jetpack',
+			},
+			window.location.origin,
+		);
+
+		host.click();
+		await pickSidebarOption( 'edit-post/block' );
+		expect( manager.open ).toHaveBeenCalledTimes( 1 );
+		expect( companionFrame.postMessage ).toHaveBeenLastCalledWith(
+			{
+				type: 'os-editor-sidecar-set',
+				active: true,
+				detached: true,
+				area: 'edit-post/block',
+			},
+			window.location.origin,
+		);
 	} );
 
 	test( 'opens a narrow floating sibling directly beside the unchanged editor', async () => {
@@ -622,9 +710,7 @@ describe( 'bootEditorSidecar', () => {
 		frame.postMessage.mockClear();
 
 		host.click();
-		for ( let i = 0; i < 8; i++ ) {
-			await Promise.resolve();
-		}
+		await pickSidebarOption( 'close' );
 
 		expect(
 			companion.close.mock.calls.length + companion.destroy.mock.calls.length,
@@ -665,9 +751,9 @@ describe( 'bootEditorSidecar', () => {
 		const host = renderButton( def, editor );
 
 		host.click();
-		await flushMicrotasks();
+		await pickSidebarOption();
 		host.click();
-		await flushMicrotasks();
+		await pickSidebarOption( 'close' );
 		expect( JSON.parse( window.localStorage.getItem( STORAGE_KEY )! ) ).toEqual(
 			[],
 		);
@@ -699,11 +785,11 @@ describe( 'bootEditorSidecar', () => {
 		const host = renderButton( def, editor );
 
 		host.click();
-		await flushMicrotasks();
+		await pickSidebarOption();
 		host.click();
-		await flushMicrotasks();
+		await pickSidebarOption( 'close' );
 		host.click();
-		await flushMicrotasks();
+		await pickSidebarOption();
 		resolveOpen!();
 		await flushMicrotasks();
 
