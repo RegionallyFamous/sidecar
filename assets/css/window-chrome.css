@@ -106,7 +106,7 @@
 
 .os-window.os-window--editor-sidecar-companion {
 	min-width: 280px;
-	background: #fff;
+	background: var( --os-ui-surface, #fff );
 	background-clip: padding-box;
 	border: 0;
 	border-block-start: 1px solid var( --os-window-border );
@@ -117,8 +117,7 @@
 	border-end-start-radius: 0;
 	border-end-end-radius: var( --os-window-radius );
 	box-shadow: none;
-	color: #1d2327;
-	--os-ui-surface: #fff;
+	color: var( --os-ui-fg, #1d2327 );
 }
 
 /* The editor owns the only title bar. */
@@ -533,7 +532,6 @@
 	color: var( --os-titlebar-color );
 	--os-ui-fg: var( --os-titlebar-color );
 	--os-ui-fg-muted: var( --os-titlebar-color );
-	--os-ui-hover: rgba( 255, 255, 255, 0.11 );
 	--os-ui-active: rgba( 255, 255, 255, 0.17 );
 }
 
@@ -572,8 +570,14 @@
 	flex: 0 0 auto;
 	--os-ui-btn-color: var( --os-titlebar-color );
 	--os-ui-btn-color-hover: var( --os-titlebar-color );
-	--os-ui-btn-bg-hover: rgba( 255, 255, 255, 0.11 );
-	--os-ui-btn-bg-active: rgba( 255, 255, 255, 0.2 );
+	--os-ui-btn-bg-hover: var(
+		--os-titlebar-btn-bg-hover,
+		var( --os-ui-hover, rgba( 255, 255, 255, 0.11 ) )
+	);
+	--os-ui-btn-bg-active: var(
+		--os-titlebar-btn-bg-active,
+		var( --os-ui-active, rgba( 255, 255, 255, 0.2 ) )
+	);
 	--os-ui-btn-outline: var( --os-ui-focus, #72aee6 );
 }
 
